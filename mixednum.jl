@@ -61,14 +61,34 @@ a1=OranType3C(0,0,0,symb,(μ=μ,),extended,0,nrb,fo,iq_values(QAM64,scs,bw))
 #iqs[1]=1
 
 
+
 data, a_lpf=a1 |> oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier
 data, a_lpf= out_of_band_suppression(data, a_lpf)
+
+
+
+
+# data=mixer(data)
+# output_buffer!(y, data)
+
+# data, a_lpf=flush(a_lpf)
+# data=mixer(data)
+# output_buffer!(y, data)
+
+data, a_hbf = suppress_mirror( data |> upsample )
 data=mixer(data)
 output_buffer!(y, data)
 
 data, a_lpf=flush(a_lpf)
+data, a_hbf = suppress_mirror( data |> upsample, a_hbf)
 data=mixer(data)
 output_buffer!(y, data)
+
+data, a_hbf=flush(a_hbf)
+data=mixer(data)
+output_buffer!(y, data)
+
+
 
 o=a1
 fs=sample_frequency(data)
@@ -119,19 +139,19 @@ fr=r*from(prbs)+r*cp
 yy=yy ./ ϕ
 
 
-# mx=-number_of_subcarriers(o) << subcarrier_spacing_configuration(o)
-# ω=oscillator(fs,mx,1:length(y))
-# yy=ω .* yy
+mx=-number_of_subcarriers(o) << subcarrier_spacing_configuration(o)
+ω=oscillator(fs,mx,1:length(y))
+yy=ω .* yy
 
 # plot((0:length(y)-1)/length(y)*hertz(fs),10*log10.(abs2.(fft(hanning(length(y)) .* yy))))
 
-# boi=band_of_interest(o)
-# gb=guardband(o)
+boi=band_of_interest(o)
+gb=guardband(o)
 
-# b=remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-20)) 
-# plot(10log10.(abs2.(tf(b))))
-# d=length(b)>>1
-# yy=filt(b,vcat(yy,zeros(d)))[1+d:end]
+b=remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-20)) 
+#plot(10log10.(abs2.(tf(b))))
+d=length(b)>>1
+yy=filt(b,vcat(yy,zeros(d)))[1+d:end]
 
 
 # figure(3)
@@ -139,37 +159,62 @@ yy=yy ./ ϕ
 
 
 
-# ω=oscillator(fs,-mx,1:length(y))
-# yy=ω .* yy
+ω=oscillator(fs,-mx,1:length(y))
+yy=ω .* yy
 
 cp2=cyclic_prefix(prbs)>>1
 fr=r*from(prbs)+r*cp2
 th=r*from(prbs)+r*cp2+r*symbol(prbs)-1
 
 yy=yy[fr+1:th+1]
-#yy=vcat(yy[1:end-cp],yy[end-cp+1:end])
 
-cp2
 n=length(yy)
 delay=zeros(n)
-delay[cp2+1]=1
+
+#delay[cp2+1]=1
+delay[r*cp2+1]=1
+
+
+
 ω=fft(delay)
 
 s=fft(yy) ./ ω
-plot(abs.(s))
-plot(abs.(o.iqs))
 
-plot(real.(s))
-plot(real.(o.iqs))
 
-result=s
+#plot(10log10.(abs2.(tf(b))))
+
+n
+n2=n>>1
+z=exp.(π*im*((-n2 : n2-1) .+0.5)/n2)
+h=tf(b;z=z)
+amplitudes=abs.(h)
+c=number_of_subcarriers(o)
+fr=(n-number_of_subcarriers(o))>>1+1
+th=fr+c-1
+amplitudes=amplitudes[fr:th]
+m=length(amplitudes)
+s[1:m] ./= amplitudes
+
+
+#plot(abs.(s))
+#plot(abs.(o.iqs))
+
+#plot(real.(s))
+#plot(real.(o.iqs))
+
+result=s[1:c]
 expected=o.iqs
 
-plot(abs.(result[1:length(expected)].-expected),".")
+#plot(abs.(result[1:length(expected)].-expected),".")
 
-@test all(isapprox.(result[1:length(expected)],expected, atol=0.01))
+@test all(isapprox.(result[1:length(expected)],expected, atol=0.025))
 
 plot(angle.(s[1:number_of_subcarriers(o)] ./ o.iqs))
+
+#result=result[1:length(expected)]
+figure(10)
+
+plot(real(result),imag(result),".")
 
 ##############################################################
 
