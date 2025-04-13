@@ -139,6 +139,129 @@ fr=r*from(prbs)+r*cp
 yy=yy ./ ϕ
 
 
+boi=band_of_interest(prbs)
+length(yy)
+fs
+df=fs/length(yy)
+p=ceil(Int64,boi*df*length(yy))
+
+yy=fft(yy)
+yy[p+1:end] .= 0
+yy=ifft(yy)
+
+# mx=-number_of_subcarriers(o) << subcarrier_spacing_configuration(o)
+# ω=oscillator(fs,mx,1:length(y))
+# yy=ω .* yy
+
+# # plot((0:length(y)-1)/length(y)*hertz(fs),10*log10.(abs2.(fft(hanning(length(y)) .* yy))))
+
+# boi=band_of_interest(o)
+# gb=guardband(o)
+
+# b=remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-20)) 
+# #plot(10log10.(abs2.(tf(b))))
+# d=length(b)>>1
+# yy=filt(b,vcat(yy,zeros(d)))[1+d:end]
+
+
+# # figure(3)
+# # plot((0:length(y)-1)/length(y)*hertz(fs),10*log10.(abs2.(fft(hanning(length(y)) .* yy))))
+
+
+
+# ω=oscillator(fs,-mx,1:length(y))
+# yy=ω .* yy
+
+cp2=cyclic_prefix(prbs)>>1
+fr=r*from(prbs)+r*cp2
+th=r*from(prbs)+r*cp2+r*symbol(prbs)-1
+
+yy=yy[fr+1:th+1]
+
+n=length(yy)
+delay=zeros(n)
+
+#delay[cp2+1]=1
+delay[r*cp2+1]=1
+
+ω=fft(delay)
+
+s=fft(yy) ./ ω
+
+
+#plot(10log10.(abs2.(tf(b))))
+
+# n
+# n2=n>>1
+# z=exp.(π*im*((-n2 : n2-1) .+0.5)/n2)
+# h=tf(b;z=z)
+# amplitudes=abs.(h)
+# c=number_of_subcarriers(o)
+# fr=(n-number_of_subcarriers(o))>>1+1
+# th=fr+c-1
+# amplitudes=amplitudes[fr:th]
+# m=length(amplitudes)
+# s[1:m] ./= amplitudes
+
+
+#plot(abs.(s))
+#plot(abs.(o.iqs))
+
+#plot(real.(s))
+#plot(real.(o.iqs))
+
+result=s[1:number_of_subcarriers(o)]
+expected=o.iqs
+
+#plot(abs.(result[1:length(expected)].-expected),".")
+
+@test all(isapprox.(result[1:length(expected)],expected, atol=0.01))
+
+plot(angle.(s[1:number_of_subcarriers(o)] ./ o.iqs))
+
+#result=result[1:length(expected)]
+figure(10)
+
+plot(real(result),imag(result),".")
+
+figure(2)
+plot(abs.(result))
+plot(abs.(expected),"--")
+
+
+##############################################################
+o=a1
+
+#move to dc
+
+fs=sample_frequency(data)
+prbs= o |> oran2prbs
+r=fs ÷  sample_frequency(prbs)
+
+mx=-frequency_offset_7k5Hz(o)
+ω=oscillator(fs,mx,0:length(y)-1)
+yy=ω .* y
+
+#figure(3)
+#plot((0:length(y)-1)/length(y)*hertz(fs),10*log10.(abs2.(fft(hanning(length(y)) .* y))))
+#plot((0:length(y)-1)/length(y)*hertz(fs),10*log10.(abs2.(fft(hanning(length(y)) .* yy))))
+
+cp=cyclic_prefix(prbs)
+fr=r*from(prbs)+r*cp
+ϕ=first(oscillator(fs,mx,fr:fr))
+yy=yy ./ ϕ
+
+
+boi=band_of_interest(prbs)
+length(yy)
+fs
+df=fs/length(yy)
+p=ceil(Int64,boi*df*length(yy))
+
+yy=fft(yy)
+yy[p+1:end] .= 0
+yy=ifft(yy)
+
 mx=-number_of_subcarriers(o) << subcarrier_spacing_configuration(o)
 ω=oscillator(fs,mx,1:length(y))
 yy=ω .* yy
@@ -215,6 +338,11 @@ plot(angle.(s[1:number_of_subcarriers(o)] ./ o.iqs))
 figure(10)
 
 plot(real(result),imag(result),".")
+
+figure(2)
+plot(abs.(result))
+plot(abs.(expected),"--")
+
 
 ##############################################################
 
