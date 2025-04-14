@@ -71,3 +71,13 @@ function shift_frequency_offset(y)
     iqs=circshift(iqs, offset2)
     return (oran=oran, fs=fs, iqs=iqs)
 end
+
+# o=a1
+# fs=sample_frequency(data)
+# s=symbol_with_cp(y,fs,o) |> odd_shift |> without_cyclicprefix   |> time2bins |> shift_frequency_offset
+# expected = o |>  inphase_n_quadratures
+# result=s |>  inphase_n_quadratures
+
+# @test all(isapprox.(result[1:length(expected)],expected, atol=0.01))
+
+

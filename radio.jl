@@ -8,7 +8,7 @@ function oran2prbs(o::OranType3C; lowpassfilter=nothing, bw_table=BANDWIDTH_TABL
     scs=subcarrier_spacing(o)
     nprbs=number_of_prbs(o)
 
-    bw=bw_table[(scs=scs, nprbs=nprbs)]
+    bw= bw_table[(scs=scs, nprbs=nprbs)]
     
     gb=guardband(scs,bw)
     boi=band_of_interest(o)
@@ -22,13 +22,13 @@ function oran2prbs(o::OranType3C; lowpassfilter=nothing, bw_table=BANDWIDTH_TABL
 
     sgt=sg_table[(μ = μ, extended = extended, subFrameId = subFrameIdMod2, slotId = slotId, symbolId = symbolId)]
 
-    exp_adjust=convert(Int64,log2(nbins/symbol_length(μ)))
+    fs_adjust=convert(Int64,log2(nbins/symbol_length(μ)))
 
-    from=sgt.from << exp_adjust
-    cp=sgt.cp  << exp_adjust
-    symb = sgt.symbol  << exp_adjust
+    from=sgt.from << fs_adjust
+    cp=sgt.cp  << fs_adjust
+    symb = sgt.symbol  << fs_adjust
 
-    iqs=inphase_n_quadratures(o)
+    iqs=copy(inphase_n_quadratures(o))
 
     return (μ=μ, nbins=nbins, from=from, cp=cp, symbol=symb, boi=boi, gb=gb, fo=fo, iqs=iqs, lpf=lowpassfilter)
 end
@@ -47,7 +47,7 @@ subcarrier_spacing_configuration(nt::NamedTuple)=nt.μ
 sample_frequency(data::NamedTuple)= haskey(data, :fs) ? data.fs : data.nbins << (data.μ+1)
 number_of_bins(data::NamedTuple) = data.nbins
 
-guardband(data::NamedTuple)=getindex(data,:gb,0)
+guardband(data::NamedTuple)=getindex(data,:gb,0) 
 band_of_interest(data::NamedTuple)=data.boi
 mixer_frequency(data::NamedTuple)=data.mix
 frequency_offset(data::NamedTuple) = data.fo
@@ -55,18 +55,17 @@ frequency_offset(data::NamedTuple) = data.fo
 from(data::NamedTuple)=data.from
 thru(data::NamedTuple)=data.thru
 
-cyclic_prefix(data::NamedTuple)=data.cp
-symbol(data::NamedTuple)=data.symbol   # better name: number_of_symbol_iqs
+length_of_cyclic_prefix(data::NamedTuple)=data.cp
+length_of_symbol(data::NamedTuple)=data.symbol   
 
 lowpassfilter(data::NamedTuple)=data.lpf
-
 
 inphase_n_quadratures(data::NamedTuple)=data.iqs
 
 function iqmap(iqs)
-    n=length(iqs)
-    n2=n>>1
-    m=nextpow(2,n)
+    n= length(iqs)
+    n2= n>>1
+    m= nextpow(2,n)
     result=vcat(collect(m-n2+1:m),collect(1:n2))
     return result
 end
@@ -74,21 +73,21 @@ end
 @test iqmap(1:10)==[12,13,14,15,16,1,2,3,4,5]
 
 function prbs2bins(data)
-    μ=subcarrier_spacing_configuration(data)
-    nbins=number_of_bins(data)
-    lpf=lowpassfilter(data)
+    μ= subcarrier_spacing_configuration(data)
+    nbins= number_of_bins(data)
+    lpf= lowpassfilter(data)
 
-    boi=band_of_interest(data)
-    gb=guardband(data)
-    fo=frequency_offset(data)
+    boi= band_of_interest(data)
+    gb= guardband(data)
+    fo= frequency_offset(data)
     
-    fr=from(data)
-    cp=cyclic_prefix(data)
-    sym=symbol(data)
+    fr= from(data)
+    cp= length_of_cyclic_prefix(data)
+    sym= length_of_symbol(data)
     
-    iqs=inphase_n_quadratures(data)
+    iqs= inphase_n_quadratures(data)
 
-    bins=zeros(eltype(iqs), nbins)
+    bins= zeros(eltype(iqs), nbins)
     bins[iqmap(iqs)] .= iqs
 
     mix = fo + length(iqs) << μ
@@ -97,10 +96,10 @@ function prbs2bins(data)
 end
 
 function  oscillator(fs, mix, range)
-    from=first(range)
-    thru=last(range)
+    from= first(range)
+    thru= last(range)
 
-    ms=0.001
+    ms= 0.001
     number_of_samples_in_2ms= hertz(fs)*2ms
     number_of_7500hz_periods_per_2ms=15
 
@@ -119,10 +118,10 @@ function phase_correction(data)
     mix=mixer_frequency(data)
     
     fr=from(data)
-    cp=cyclic_prefix(data)
-    sym=symbol(data)
+    cp=length_of_cyclic_prefix(data)
+    sym=length_of_symbol(data)
     
-    phase= first(oscillator(fs, mix, fr+cp:fr+cp))
+    phase = first(oscillator(fs, mix, fr+cp:fr+cp))
     
     iqs= inphase_n_quadratures(data) ./ phase
     
@@ -139,11 +138,11 @@ function create_lowpassfilter(data)
     lpf=lowpassfilter(data)
     mix=mixer_frequency(data)
 
-    lpf = isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs) |> FIRFilter : lpf.flt
+    lpf = isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-40)) |> FIRFilter : lpf.flt
 
     fr=from(data)
-    cp=cyclic_prefix(data)
-    sym=symbol(data)
+    cp=length_of_cyclic_prefix(data)
+    sym=length_of_symbol(data)
 
     iqs= inphase_n_quadratures(data)
 
@@ -158,9 +157,9 @@ function amplitude_correction(data)
     lpf=lowpassfilter(data)
     mix=mixer_frequency(data)
     
-    fr=from(data)
-    cp=cyclic_prefix(data)
-    sym=symbol(data)
+    fr= from(data)
+    cp= length_of_cyclic_prefix(data)
+    sym= length_of_symbol(data)
     
     iqs= inphase_n_quadratures(data)
 
@@ -183,9 +182,9 @@ function bins2symbol(data)
     lpf=lowpassfilter(data)
     mix=mixer_frequency(data)
     
-    fr= from(data)
-    cp= cyclic_prefix(data)
-    sym= symbol(data)
+    fr = from(data)
+    cp = length_of_cyclic_prefix(data)
+    sym = length_of_symbol(data)
     
     iqs=inphase_n_quadratures(data)
 
@@ -202,10 +201,10 @@ function with_cyclic_prefix(data)
     mix= mixer_frequency(data)
     lpf= lowpassfilter(data)
     
-    fr= from(data)
-    cp= cyclic_prefix(data)
-    sym= symbol(data)
-    thru= fr+cp+sym-1
+    fr = from(data)
+    cp = length_of_cyclic_prefix(data)
+    sym = length_of_symbol(data)
+    thru = fr+cp+sym-1
     
     iqs=inphase_n_quadratures(data)
 
@@ -215,7 +214,7 @@ function with_cyclic_prefix(data)
 end
 
 function shift_half_subcarrier(data)
-    μ=subcarrier_spacing_configuration(data)
+    μ= subcarrier_spacing_configuration(data)
     fs=sample_frequency(data)
     boi=band_of_interest(data)
     gb=guardband(data)
@@ -254,7 +253,7 @@ coef(f::FIRFilter)=f.h
 # end
 
 function out_of_band_suppression(in, lpf)
-    b=lpf.flt
+    b= lpf.flt
     boi=band_of_interest(in)
     gb=guardband(in)
     fs=sample_frequency(in)
@@ -287,8 +286,8 @@ function mixer(data)
     boi=band_of_interest(data)
     mix=mixer_frequency(data)
     
-    fr=from(data)
-    th=thru(data)
+    fr= from(data)
+    th= thru(data)
     
     iqs=inphase_n_quadratures(data)
     
@@ -304,9 +303,9 @@ function upsample(data)
     fs=sample_frequency(data)
     boi=band_of_interest(data)
     mix=mixer_frequency(data)
-    fr=from(data)
-    th=thru(data)
-    iqs=inphase_n_quadratures(data)
+    fr= from(data)
+    th= thru(data)
+    iqs= inphase_n_quadratures(data)
 
     n=2(th-fr+1)
     fs *= 2
@@ -323,8 +322,8 @@ function upsample(data)
 end
 
 function suppress_mirror(in)
-    fs=sample_frequency(in)
-    boi=band_of_interest(in)
+    fs= sample_frequency(in)
+    boi= band_of_interest(in)
     
     Ws=Wp=boi/fs
     flt=find_halfband(Wp,Ws) |> FIRFilter 
@@ -333,7 +332,7 @@ function suppress_mirror(in)
 end
 
 function suppress_mirror(in, hbf)
-    b=hbf.flt
+    b= hbf.flt
     boi=band_of_interest(in)
 
     fs=sample_frequency(in)
@@ -361,7 +360,7 @@ function suppress_mirror(in, hbf)
 end
 
 function flush(flt)
-    b=flt.flt
+    b= flt.flt
     boi=band_of_interest(flt)
     gb=guardband(flt)
     fs=sample_frequency(flt)
@@ -379,7 +378,7 @@ function flush(flt)
 end
 
 function mix_n_boi(adata,bdata)
-    fs=sample_frequency(adata)
+    fs= sample_frequency(adata)
     if fs!=sample_frequency(bdata)
         error("problex with fs.")
     end
@@ -402,8 +401,8 @@ function mix_n_boi(adata,bdata)
 end
 
 function align_end(adata,bdata)
-    th=min(thru(adata),thru(bdata))
-    fs=sample_frequency(adata)
+    th= min(thru(adata),thru(bdata))
+    fs= sample_frequency(adata)
 
     x=nothing
     
@@ -433,9 +432,9 @@ function align_end(adata,bdata)
 end
 
 function align_start(adata,bdata)
-    fr=min(from(adata),from(bdata))
-    fs=sample_frequency(adata)
-    th=thru(adata)
+    fr= min(from(adata),from(bdata))
+    fs= sample_frequency(adata)
+    th= thru(adata)
 
     if th != thru(bdata)
         error("thru messed up")
@@ -468,8 +467,8 @@ function mix_n_merge(adata,bdata)
     adata, bdata= align_start(adata, bdata)
     
     fs=sample_frequency(adata)
-    fr=from(adata)
-    th=thru(adata)
+    fr= from(adata)
+    th= thru(adata)
     mix,boi=mix_n_boi(adata,bdata)
     
     iqs=inphase_n_quadratures(adata)
@@ -490,7 +489,7 @@ function mix_n_merge(adata,bdata)
 end
 
 function output_buffer!(y,data)
-    iqs=inphase_n_quadratures(data)
+    iqs= inphase_n_quadratures(data)
     
     fr=from(data)
     th=thru(data)
