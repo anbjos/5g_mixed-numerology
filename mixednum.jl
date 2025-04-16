@@ -14,12 +14,18 @@ include("./o-ran.jl")
 include("./radio.jl")
 include("./user_equipment.jl")
 
+function rolloff(n)
+    n+=1
+    result=sin.(π/2*(0:n)/n)[2:end-1]
+    return result
+end
+
 
 function postprocess(iqs, oran, fs)
     prbs= oran |> oran2prbs
     r=fs ÷  sample_frequency(prbs)
 
-    mx= -frequency_offset_7k5Hz(oran)
+    mx= -frequency_offset(oran) << subcarrier_spacing_configuration(oran)
     ω= oscillator(fs,mx,0:length(iqs)-1)
     result= ω .* iqs
     
@@ -35,6 +41,10 @@ function postprocess(iqs, oran, fs)
     
     result=fft(result)
     result[n_boi+n_gb+1:end-n_gb] .= 0
+    # ro=rolloff(n_gb)
+    # result[end-n_gb+1:end] .*= ro
+    # ro=ro[end:-1:1]
+    # result[n_boi+1:n_boi+n_gb] .*= ro
     result=ifft(result)
         
     cp2= length_of_cyclic_prefix(prbs) >> 1
@@ -54,6 +64,25 @@ function postprocess(iqs, oran, fs)
 end
 
 
+function filter_w_meta(rdl::RadioDownLink)
+    boi=band_of_interest(rdl)
+    gb=guardband(rdl)
+    fs=sample_frequency(rdl)
+    mix=mixer_frequency(rdl)
+    
+    lpf= lowpassfilter(rdl)
+    delay=length(coef(lpf))>>1
+    fr=from(rdl)-delay
+    th=thru(rdl)-delay
+
+    fr=thru(rdl)+1
+    n=length(coef(lpf))-1
+    th=fr+n-1
+    
+    return (fs=fs, from=fr, thru=th, boi=boi, gb=gb, mix=mix, flt=lpf)
+end
+
+suppress_mirror(rdl::RadioDownLink)=out_of_band_suppression(rdl::RadioDownLink)
 
 #iqs=o1.iqs
 #iqs.=0
@@ -72,6 +101,11 @@ a1=OranType3C(0,0,0,symb,(μ=μ,),extended,0,nrb,fo,iq_values(QAM64,scs,bw))
 symb+=1
 a2=OranType3C(0,0,0,symb,(μ=μ,),extended,0,nrb,fo,iq_values(QAM64,scs,bw))
 
+# a1.iqs[:] .= a[:]
+#a1.iqs[:] .= 0
+#a1.iqs[1] = 1
+# a1.iqs[2] = -1
+
 scs=30
 extended=0
 bw=10
@@ -84,29 +118,65 @@ b1=OranType3C(0,0,0,symb,(μ=μ,),extended,0,nrb,fo,iq_values(QAM64,scs,bw))
 symb+=1
 b2=OranType3C(0,0,0,symb,(μ=μ,),extended,0,nrb,fo,iq_values(QAM64,scs,bw))
 
+# b1.iqs[:] .= b[:]
+# b1.iqs[:] .= 0
+
 y=zeros(ComplexF64,2(2048+512))
 
-data, a_lpf=a1 |> oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier
-data, a_lpf= out_of_band_suppression(data, a_lpf)
-adata, a_hbf = suppress_mirror( data |> upsample )
+data=a1 |>  oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> 
+            amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier |> 
+            out_of_band_suppression
+
+a_lpf=filter_w_meta(data)
+data=upsample(data)
+a_hbf=create_halfbandfilter(data)
+lowpassfilter!(data,a_hbf)
+adata=suppress_mirror(data)
+a_hbf=filter_w_meta(adata)
+
 
 # plot(pow2db.(abs2.(tf(coef(a_lpf.flt)))))
 
-data, b_lpf=b1 |> oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier
-data, b_lpf= out_of_band_suppression(data, b_lpf)
-bdata, b_hbf = suppress_mirror( data |> upsample )
+
+
+data=b1 |>  oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> 
+            amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier |> 
+            out_of_band_suppression
+
+b_lpf=filter_w_meta(data)
+
+data=upsample(data)
+b_hbf=create_halfbandfilter(data)
+lowpassfilter!(data,b_hbf)
+bdata=suppress_mirror(data)
+b_hbf=filter_w_meta(bdata)
+
+
+
+# mix_n_merge(adata,bdata)
+
+
+# data=b1 |> oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier
+# data= out_of_band_suppression(data)
+# b_lpf=filter_w_meta(data)
+# bdata, b_hbf = suppress_mirror( data |> upsample )
 
 data, x= mix_n_merge(adata ,bdata)
+
 data=mixer(data)
 output_buffer!(y, data)
 
 data, a_lpf=flush(a_lpf)
 data=upsample(data)
-adata, a_hbf = suppress_mirror(data, a_hbf)
+lowpassfilter!(data, a_hbf.flt)
+adata= suppress_mirror(data)
+a_hbf=filter_w_meta(adata)
 
 data, b_lpf=flush(b_lpf)
 data=upsample(data)
-bdata, b_hbf = suppress_mirror(data, b_hbf)
+lowpassfilter!(data,b_hbf.flt)
+bdata = suppress_mirror(data)
+b_hbf=filter_w_meta(adata)
 
 data, x= mix_n_merge(bdata,x)
 data=mixer(data)
@@ -116,7 +186,6 @@ data, x= mix_n_merge(adata,x)
 
 data=mixer(data)
 output_buffer!(y, data)
-
 
 adata, a_hbf=flush(a_hbf)
 bdata, b_hbf=flush(b_hbf)
@@ -136,14 +205,35 @@ output_buffer!(y, data)
 
 fs_out=sample_frequency(data)
 
-
+ 
 result, expected= postprocess(y, a1, fs_out)
-@test all(isapprox.(result[1:length(expected)],expected, atol=0.05))
+@test all(isapprox.(result[1:length(expected)],expected, atol=0.02))
+
+
+figure()
+plot(abs.(result[1:length(expected)].-expected),".")
+
+
+figure()
+plot(angle.(result[1:number_of_subcarriers(o)] ./ expected))
+
+
+
+# a=copy(a1.iqs)
+# b=copy(b1.iqs)
+
+
 
 
 y
 
+figure()
 plot(abs.(result[1:length(expected)].-expected),".")
+title("with rolloff, with ini")
+
+#Konklusion, filter virker også uden rolloff. Problem er en stor fejl ved RE#0. Jeg ved ikke om fejl kan forekomme ved RE#[end] eller ej.
+#Problemet skyldes **ikke** INI. 
+
 plot(angle.(s[1:number_of_subcarriers(o)] ./ o.iqs))
 
 #result=result[1:length(expected)]

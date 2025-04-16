@@ -53,7 +53,7 @@ sample_frequency(o::OranType3C)= (1000subcarrier_spacing(o) * number_of_bins(o))
 
 isextended(o::OranType3C)= (cp_length(o) in 512 .>> (0:4))
 
-frequency_offset_7k5Hz(o::OranType3C)=frequency_offset(o) << subcarrier_spacing_configuration(o)
+# frequency_offset_7k5Hz(o::OranType3C)=frequency_offset(o) << subcarrier_spacing_configuration(o)
 
 inphase_n_quadratures(o::OranType3C)=o.iqs
 
