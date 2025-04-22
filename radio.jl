@@ -486,6 +486,26 @@ function mix_n_merge(adata,bdata)
     return result, x
 end
 
+function filter_w_meta(rdl::RadioDownLink)
+    boi=band_of_interest(rdl)
+    gb=guardband(rdl)
+    fs=sample_frequency(rdl)
+    mix=mixer_frequency(rdl)
+    
+    lpf= lowpassfilter(rdl)
+    delay=length(coef(lpf))>>1
+    fr=from(rdl)-delay
+    th=thru(rdl)-delay
+
+    fr=thru(rdl)+1
+    n=length(coef(lpf))-1
+    th=fr+n-1
+    
+    return (fs=fs, from=fr, thru=th, boi=boi, gb=gb, mix=mix, flt=lpf)
+end
+
+suppress_mirror(rdl::RadioDownLink)=out_of_band_suppression(rdl::RadioDownLink)
+
 function output_buffer!(y,data)
     iqs= inphase_n_quadratures(data)
     

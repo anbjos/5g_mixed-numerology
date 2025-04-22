@@ -1,83 +1,39 @@
-function symbol_with_cp(y,fs,o::OranType3C)
-    r=fs ÷ sample_frequency(o |> oran2prbs)
+function postprocess(iqs, oran, fs)
+    prbs= oran |> oran2prbs
+    r=fs ÷  sample_frequency(prbs)
 
-    fr=from(o |> oran2prbs |> prbs2bins |> bins2symbol |> with_cyclic_prefix)
-    th=thru(o |> oran2prbs |> prbs2bins |> bins2symbol |> with_cyclic_prefix)
-
-    n=r*(th-fr+1)
-    fr *= r
-    th=fr+n-1
-
-    iqs=y[fr+1:th+1]
-
-    return (oran=o, fs=fs, iqs=iqs)
-end
-
-function odd_shift(y)
-    oran=y.oran
-    offset=frequency_offset(oran)
-    fs=sample_frequency(y)
-    r=fs ÷ sample_frequency(oran |> oran2prbs)
+    mx= -frequency_offset(oran) << subcarrier_spacing_configuration(oran)
+    ω= oscillator(fs,mx,0:length(iqs)-1)
+    result= ω .* iqs
     
-    cp=cyclic_prefix(oran |> oran2prbs) * r
-
-    iqs=inphase_n_quadratures(y)
-    n=length(iqs)-cp
+    cp=length_of_cyclic_prefix(prbs)
+    fr=r*from(prbs)+r*cp
+    ϕ=first(oscillator(fs,mx,fr:fr))
+    result ./= ϕ
     
-    if isodd(offset)
-        println("odd shift active")
-        ω=exp.(-π*im*(0-cp:length(iqs)-cp-1)/n)
-        iqs .*= ω
-    else
-        println("odd shift in-active")
-    end
+    boi=band_of_interest(prbs)
+    gb=guardband(prbs)
+    n_gb=ceil(Int64,gb/fs*length(result))
+    n_boi=ceil(Int64,boi/fs*length(result))
     
-    return (oran=oran, fs=fs, iqs=iqs)
+    result=fft(result)
+    result[n_boi+n_gb+1:end-n_gb] .= 0
+    result=ifft(result)
+        
+    cp2= length_of_cyclic_prefix(prbs) >> 1
+    fr= r*from(prbs)+r*cp2
+    th= r*from(prbs)+r*cp2+r*length_of_symbol(prbs)-1
+    result=result[fr+1:th+1]
+
+    delay=zeros(length(result))
+    delay[r*cp2+1]=1
+    ω=fft(delay)
+    result=fft(result) ./ ω
+
+    expected=oran.iqs
+    result=result[1:length(expected)]
+        
+    return result, expected
 end
-
-function without_cyclicprefix(y)
-    oran=y.oran
-    r=fs ÷ sample_frequency(oran |> oran2prbs)
-    iqs=inphase_n_quadratures(y)
-
-    cp=cyclic_prefix(oran |> oran2prbs)
-    cp2=cp>>1
-
-    cp2 *= r
-    iqs=iqs[cp2+1:end-cp2]
-    iqs=vcat(iqs[cp2+1:end],iqs[1:cp2])
-
-    #cp *= r
-    #iqs=iqs[cp+1:end]
-
-    return (oran=oran, fs=fs, iqs=iqs)
-end
-
-function time2bins(y)
-    oran=y.oran
-    fs=sample_frequency(y)
-    iqs=inphase_n_quadratures(y)
-    iqs=fft(iqs)
-    
-    return (oran=oran, fs=fs, iqs=iqs)
-end
-
-function shift_frequency_offset(y)
-    oran=y.oran
-    offset2=-(frequency_offset(oran) >> 1)
-
-    iqs=inphase_n_quadratures(y)
-
-    iqs=circshift(iqs, offset2)
-    return (oran=oran, fs=fs, iqs=iqs)
-end
-
-# o=a1
-# fs=sample_frequency(data)
-# s=symbol_with_cp(y,fs,o) |> odd_shift |> without_cyclicprefix   |> time2bins |> shift_frequency_offset
-# expected = o |>  inphase_n_quadratures
-# result=s |>  inphase_n_quadratures
-
-# @test all(isapprox.(result[1:length(expected)],expected, atol=0.01))
 
 
