@@ -40,7 +40,7 @@ b2=OranType3C(0,0,0,symb,(μ=μ,),extended,0,nrb,fo,iq_values(QAM64,scs,bw))
 
 y=zeros(ComplexF64,2(2048+512))
 
-data=a1 |>  oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> 
+data=a1 |>  RadioDownLink |> prbs2bins |> phase_correction |> create_lowpassfilter |> 
             amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier |> 
             out_of_band_suppression
 
@@ -54,7 +54,7 @@ a_hbf=filter_w_meta(adata)
 figure()
 plot(pow2db.(abs2.(tf(coef(a_lpf.flt)))))
 
-data=b1 |>  oran2prbs |> prbs2bins |> phase_correction |> create_lowpassfilter |> 
+data=b1 |>  RadioDownLink |> prbs2bins |> phase_correction |> create_lowpassfilter |> 
             amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier |> 
             out_of_band_suppression
 

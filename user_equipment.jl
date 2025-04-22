@@ -1,5 +1,5 @@
 function postprocess(iqs, oran, fs)
-    prbs= oran |> oran2prbs
+    prbs= oran |> RadioDownLink
     r=fs ÷  sample_frequency(prbs)
 
     mx= -frequency_offset(oran) << subcarrier_spacing_configuration(oran)

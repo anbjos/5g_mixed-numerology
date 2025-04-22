@@ -1,5 +1,3 @@
-Absolutely — here’s a unified and polished introduction that combines your motivation for mixed numerologies## 5g_mixed-numerology
-
 This repository contains a subsystem-level model addressing a central challenge in [5G](https://en.wikipedia.org/wiki/5G) systems: how to schedule and process [mixed numerologies](https://www.rfwireless-world.com/articles/5g/5g-nr-numerology-terminology).
 
 While 4G was primarily designed to **connect people**, 5G expands that vision to **connect everything**—from autonomous vehicles navigating busy roads to battery-powered water meters in deep basements. These devices have vastly different physical characteristics and communication needs. High-mobility use cases require low-latency and high-reliability links, whereas low-power sensors may only need to transmit a few bits infrequently. Supporting such diverse requirements calls for a more flexible physical layer.
@@ -32,4 +30,36 @@ The proposed solution addresses Inter-Numerology Interference (INI) through a mo
 
 5. **Final Baseband Stage at Output Sample Rate**  
    At the highest sample rate—used for baseband processing—all remaining numerologies are **fully mixed into a single composite signal**. This is possible because, by this point, all signals have been filtered, resampled, and allocated in frequency such that **no spectral overlap occurs**, assuming that frequency planning by the network has been done correctly. This final stage prepares the unified baseband signal for transmission or further downstream processing.
+   
+### Static Processing Chain
+
+Symbols are processed individually, following the structure defined in the [ETSI 5G NR specification (TS 138 211)](https://www.etsi.org/deliver/etsi_ts/138200_138299/138211/15.03.00_60/ts_138211v150300p.pdf). Each symbol is fully described by:
+
+- **Timing parameters**: `frame`, `subframe`, `slot`, and `symbol index`
+- **Frequency resources**: frequency offset and Physical Resource Block (PRB) allocation  
+- **Numerology**: subcarrier spacing and cyclic prefix, as determined by the frame structure
+
+This standardized format ensures precise time-frequency mapping, enabling consistent and modular processing across mixed numerologies.
+
+The following sections defines the processing that all symbols go through before interpolation and mixing. I have termed this part of the processing static since it is dependent on thy symbol only.
+
+#### Metadata Representation
+
+The metadata used in processing differs slightly from the raw O-RAN representation.
+
+| Field               | Description                                                                 |
+|---------------------|-----------------------------------------------------------------------------|
+| $\mu$               | ETSI subcarrier spacing configuration                                       |
+| Number of bins      | Number of FFT bins; typically a power of two greater than the subcarriers   |
+| Sample rate         | Base sample rate of the symbol (units of 7500 Hz) before interpolation       |
+| From                | Starting sample of the symbol, relative to the start of an even subframe     |
+| Thru                | Last sample of the symbol                                                    |
+| Cyclic prefix       | Length of the cyclic prefix (in samples)                                     |
+| Band of interest    | Bandwidth of interest for the symbol (in units of 7500 Hz)                   |
+| Guard band (gb)     | Guard band width (in units of 7500 Hz)                                       |
+| Frequency offset    | Offset to the lowest subcarrier frequency (in units of 7500 Hz)              |
+| Lowpass filter      | Lowpass filter applied to suppress out-of-band emissions                    |
+| Mixer frequency     | Frequency shift applied to the symbol                                        |
+
+
 

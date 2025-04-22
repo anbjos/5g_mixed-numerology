@@ -105,13 +105,6 @@ length_of_symbol!(rdl::RadioDownLink, symb)=(rdl.symb=symb)
 lowpassfilter(rdl::RadioDownLink)=rdl.flt
 lowpassfilter!(rdl::RadioDownLink, flt)=(rdl.flt=flt)
 
-function oran2prbs(args...)
-    x=RadioDownLink(args...)
-
-    # return (μ=x.μ, nbins=x.nbins, from=x.from, cp=x.cp, symbol=x.symbol, boi=x.boi, gb=x.gb, fo=x.fo, iqs=x.iqs, lpf=x.lpf)
-    return x
-end
-
 function iqmap(iqs)
     n= length(iqs)
     n2= n>>1
