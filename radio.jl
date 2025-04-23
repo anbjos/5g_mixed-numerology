@@ -115,43 +115,40 @@ end
 
 @test iqmap(1:10)==[12,13,14,15,16,1,2,3,4,5]
 
-function prbs2bins(data::RadioDownLink)
-    μ= subcarrier_spacing_configuration(data)
-    nbins= number_of_bins(data)
-    fo = frequency_offset(data)
+function prbs2bins(rdl::RadioDownLink)
+    μ= subcarrier_spacing_configuration(rdl)
+    nbins= number_of_bins(rdl)
+    fo = frequency_offset(rdl)
     
-    iqs= inphase_n_quadratures(data)
+    iqs= inphase_n_quadratures(rdl)
     bins= zeros(eltype(iqs), nbins)
     bins[iqmap(iqs)] .= iqs
     
     mix = fo + length(iqs) << μ
     
-    mixer_frequency!(data, mix)
-    inphase_n_quadratures!(data, bins)
+    mixer_frequency!(rdl, mix)
+    inphase_n_quadratures!(rdl, bins)
 
-    return data
+    return rdl
 end
 
 function  oscillator(fs, mix, range)
-    from= first(range)
-    thru= last(range)
-
     ms= 0.001
     number_of_samples_in_2ms= hertz(fs)*2ms
     number_of_7500hz_periods_per_2ms=15
 
     ω= number_of_7500hz_periods_per_2ms * mix
-    result= exp.(1im*2π*(from:thru)*ω/number_of_samples_in_2ms)
+    result= exp.(1im*2π*(range)*ω/number_of_samples_in_2ms)
     return result
 end
 
 function phase_correction(rdl::RadioDownLink)
-    fs=sample_frequency(rdl)
-    mix=mixer_frequency(rdl)
-    fr=from(rdl)
-    cp=length_of_cyclic_prefix(rdl)
+    fs= sample_frequency(rdl)
+    mix= mixer_frequency(rdl)
+    fr= from(rdl)
+    cp= length_of_cyclic_prefix(rdl)
     
-    phase = first(oscillator(fs, mix, fr+cp:fr+cp))
+    phase= first(oscillator(fs, mix, fr+cp:fr+cp))
     
     iqs= inphase_n_quadratures(rdl) ./ phase
     inphase_n_quadratures!(rdl, iqs)
@@ -161,7 +158,7 @@ end
 
 function create_lowpassfilter(rdl::RadioDownLink)
     lpf= lowpassfilter(rdl)
-    fs= sample_frequency(rdl)
+    fs = sample_frequency(rdl)
     boi= band_of_interest(rdl)
     gb= guardband(rdl)
 
@@ -176,17 +173,16 @@ function create_lowpassfilter(rdl::RadioDownLink)
 end
 
 function amplitude_correction(rdl::RadioDownLink)
-    lpf=lowpassfilter(rdl)
-    b=coef(lpf)
+    lpf= lowpassfilter(rdl)
+    b= coef(lpf)
 
-    nbins=number_of_bins(rdl)
-    z=exp.(1im *2π * (0.5:nbins-0.5) ./ nbins)
-    ampl=abs.(tf(b;z=z))
+    nbins= number_of_bins(rdl)
+    z= exp.(1im *2π * (0.5:nbins-0.5) ./ nbins)
+    ampl= abs.(tf(b;z=z))
     ampl[ampl .< 1e-12] .= 1
     
     iqs= inphase_n_quadratures(rdl)
     iqs ./= ampl
-
     inphase_n_quadratures!(rdl,iqs)
 
     return rdl
@@ -219,19 +215,16 @@ end
 
 function shift_half_subcarrier(rdl::RadioDownLink)
     μ= subcarrier_spacing_configuration(rdl)
-    fs=sample_frequency(rdl)
-    fr=from(rdl)
-    th=thru(rdl)
-
-    boi=band_of_interest(rdl)
-    gb=guardband(rdl)
-
-    
-    iqs=inphase_n_quadratures(rdl)
+    fs= sample_frequency(rdl)
+    fr= from(rdl)
+    th= thru(rdl)
 
     nshifts= 1 << μ
     phase=oscillator(fs, nshifts, fr:th)
+
+    iqs=inphase_n_quadratures(rdl)
     iqs .*= phase
+    inphase_n_quadratures!(rdl,iqs)
 
     mix=mixer_frequency(rdl)
     mix -= nshifts
