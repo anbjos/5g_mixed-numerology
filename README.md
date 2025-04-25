@@ -294,8 +294,6 @@ end
 
 This function ensures that the spectrum is properly centered around DC for symmetric filtering, while preserving the correct frequency alignment via mixer frequency adjustment.
 
-Absolutely! Here's a polished and well-structured version of the section, with technical accuracy and clarity:
-
 #### Out-of-Band Suppression
 
 OFDM generates out-of-band (OOB) emissions because transmitting a finite-length symbol is equivalent to applying a **rectangular time-domain window**, which leads to **spectral leakage**. To mitigate this, a **low-pass filter** is applied to suppress unwanted frequency components outside the band of interest.

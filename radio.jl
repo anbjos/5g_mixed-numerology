@@ -19,9 +19,13 @@ mutable struct RadioDownLink
     fs
 
     function RadioDownLink(args...;kwargs...)
-        μ, nbins, from, cp, symbol, thru, boi, gb, fo, iqs, flt, mix, fs = radioDownLink(args...;kwargs...)
-        return new(μ, nbins, from, cp, symbol, thru, boi, gb, fo, iqs, flt, mix, fs)
+        μ, nbins, from, cp, symb, thru, boi, gb, fo, iqs, flt, mix, fs = radioDownLink(args...;kwargs...)
+        return new(μ, nbins, from, cp, symb, thru, boi, gb, fo, iqs, flt, mix, fs)
     end
+end
+
+function radioDownLink(rdl::RadioDownLink)
+    return rdl.μ, rdl.nbins, rdl.from, rdl.cp, rdl.symb, rdl.thru, rdl.boi, rdl.gb, rdl.fo, rdl.iqs, rdl.flt, rdl.mix, rdl.fs
 end
 
 function radioDownLink()
@@ -105,6 +109,11 @@ length_of_symbol!(rdl::RadioDownLink, symb)=(rdl.symb=symb)
 lowpassfilter(rdl::RadioDownLink)=rdl.flt
 lowpassfilter!(rdl::RadioDownLink, flt)=(rdl.flt=flt)
 
+halfbandfilter = lowpassfilter
+halfbandfilter! = lowpassfilter!
+
+
+
 function iqmap(iqs)
     n= length(iqs)
     n2= n>>1
@@ -135,7 +144,7 @@ end
 function  oscillator(fs, mix, range)
     ms= 0.001
     number_of_samples_in_2ms= hertz(fs)*2ms
-    number_of_7500hz_periods_per_2ms=15
+    number_of_7500hz_periods_per_2ms= 15
 
     ω= number_of_7500hz_periods_per_2ms * mix
     result= exp.(1im*2π*(range)*ω/number_of_samples_in_2ms)
@@ -162,7 +171,7 @@ function create_lowpassfilter(rdl::RadioDownLink)
     boi= band_of_interest(rdl)
     gb= guardband(rdl)
 
-    lpf= isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-26), Rp=db2amp(1.0)-1) |> FIRFilter : lpf.flt
+    lpf= isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-26), Rp=db2amp(1.0)-1) |> FIRFilter : lpf
 
     lowpassfilter!(rdl, lpf)
     boi= boi + 2gb
@@ -235,9 +244,12 @@ end
 
 coef(f::FIRFilter)=f.h
 
+
+filter_delay(rdl::RadioDownLink)= rdl |> lowpassfilter |> coef |> length |> r -> r >> 1
+
 function out_of_band_suppression(rdl::RadioDownLink)
     lpf= lowpassfilter(rdl)
-    delay=length(coef(lpf))>>1
+    delay= filter_delay(rdl)
 
     fr=from(rdl)-delay
     th=thru(rdl)-delay
@@ -251,6 +263,38 @@ function out_of_band_suppression(rdl::RadioDownLink)
     inphase_n_quadratures!(rdl, y)
     
     return rdl
+end
+
+# function filter_w_meta(rdl::RadioDownLink)
+#     boi=band_of_interest(rdl)
+#     gb=guardband(rdl)
+#     fs=sample_frequency(rdl)
+#     mix=mixer_frequency(rdl)
+    
+#     lpf= lowpassfilter(rdl)
+#     delay=length(coef(lpf))>>1
+#     fr=from(rdl)-delay
+#     th=thru(rdl)-delay
+
+#     fr=thru(rdl)+1
+#     n=length(coef(lpf))-1
+#     th=fr+n-1
+    
+#     return (fs=fs, from=fr, thru=th, boi=boi, gb=gb, mix=mix, flt=lpf)
+# end
+
+function filter_w_meta!(rdl::RadioDownLink)
+    result=RadioDownLink(rdl)
+
+    th=thru(rdl)
+    d=filter_delay(rdl)
+    fr=th+d+1
+
+    from!(result,fr)
+    thru!(result,nothing)
+
+    lowpassfilter!(rdl,nothing)
+    return result
 end
 
 function upsample(rdl::RadioDownLink)
@@ -278,9 +322,8 @@ function upsample(rdl::RadioDownLink)
 end
 
 function mixer(rdl::RadioDownLink)
-    fs=sample_frequency(rdl)
-    boi=band_of_interest(rdl)
-    mix=mixer_frequency(rdl)
+    fs= sample_frequency(rdl)
+    mix= mixer_frequency(rdl)
     
     fr= from(rdl)
     th= thru(rdl)
@@ -288,6 +331,8 @@ function mixer(rdl::RadioDownLink)
     iqs=inphase_n_quadratures(rdl)
     
     phase=oscillator(fs,mix,fr:th)
+
+    println(size(iqs),"x",size(phase)," $fr:$th")
     
     iqs .*= phase
     mix=0
@@ -298,37 +343,84 @@ function mixer(rdl::RadioDownLink)
     return rdl
 end
 
-function create_halfbandfilter(rdl::RadioDownLink)
-    fs= sample_frequency(rdl)
+function create_lowpassfilter(rdl::RadioDownLink)
+    lpf= lowpassfilter(rdl)
+    fs = sample_frequency(rdl)
     boi= band_of_interest(rdl)
-    
-    Ws=Wp=boi/fs
-    hbf=find_halfband(Wp,Ws) |> FIRFilter 
+    gb= guardband(rdl)
 
-    return hbf
+    lpf= isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-26), Rp=db2amp(1.0)-1) |> FIRFilter : lpf
+
+    lowpassfilter!(rdl, lpf)
+    boi= boi + 2gb
+    boi=band_of_interest!(rdl, boi)
+    guardband!(rdl,nothing)
+
+    return rdl
 end
 
+function create_halfbandfilter(rdl::RadioDownLink)
+    hbf= halfbandfilter(rdl)
+    fs = sample_frequency(rdl)
+    boi= band_of_interest(rdl)
+
+    Ws=Wp=boi/fs
+    hbf= isnothing(hbf) ? find_halfband(Wp,Ws) |> FIRFilter : hbf
+
+    halfbandfilter!(rdl, hbf)
+
+    return rdl
+end
+
+
+
+# function create_halfbandfilter(rdl::RadioDownLink)
+#     fs= sample_frequency(rdl)
+#     boi= band_of_interest(rdl)
+    
+#     Ws=Wp=boi/fs
+#     hbf=find_halfband(Wp,Ws) |> FIRFilter 
+
+#     return hbf
+# end
+
+# function flush(flt)
+#     b= flt.flt
+#     boi=flt.boi
+#     fs=flt.fs
+#     mix=flt.mix
+#     fr=flt.from
+#     th=flt.thru
+    
+#     T=eltype(b.history)
+#     u=zeros(T,th-fr+1)
+#     y=filt(b,u)
+    
+#     out=RadioDownLink()
+#     sample_frequency!(out,fs)
+#     from!(out,fr)
+#     thru!(out,th)
+#     band_of_interest!(out,boi)
+#     mixer_frequency!(out,mix)
+#     inphase_n_quadratures!(out,y)
+    
+#     return out, nothing
+# end
+
 function flush(flt)
-    b= flt.flt
-    boi=flt.boi
-    fs=flt.fs
-    mix=flt.mix
-    fr=flt.from
-    th=flt.thru
+    n=2*filter_delay(flt)
+    T=eltype(flt.flt.history)
     
-    T=eltype(b.history)
-    u=zeros(T,th-fr+1)
-    y=filt(b,u)
+    iqs=zeros(T,n)
+    inphase_n_quadratures!(flt,iqs)
     
-    out=RadioDownLink()
-    sample_frequency!(out,fs)
-    from!(out,fr)
-    thru!(out,th)
-    band_of_interest!(out,boi)
-    mixer_frequency!(out,mix)
-    inphase_n_quadratures!(out,y)
+    fr=from(flt)
+    th=fr+n-1
+    thru!(flt,th)
     
-    return out, nothing
+    result=out_of_band_suppression(flt)
+        
+    return result
 end
 
 function mix_n_boi(adata::RadioDownLink,bdata::RadioDownLink)
@@ -398,6 +490,8 @@ function align_end(adata,bdata)
 #        bdata=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=iqs[1:n])
         thru!(bdata,th)
         inphase_n_quadratures!(bdata,iqs[1:n])
+    else
+        x=nothing
     end
 
     return adata, bdata, x
@@ -470,24 +564,6 @@ function mix_n_merge(adata,bdata)
     # result=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=mixed_n_merged)
 
     return result, x
-end
-
-function filter_w_meta(rdl::RadioDownLink)
-    boi=band_of_interest(rdl)
-    gb=guardband(rdl)
-    fs=sample_frequency(rdl)
-    mix=mixer_frequency(rdl)
-    
-    lpf= lowpassfilter(rdl)
-    delay=length(coef(lpf))>>1
-    fr=from(rdl)-delay
-    th=thru(rdl)-delay
-
-    fr=thru(rdl)+1
-    n=length(coef(lpf))-1
-    th=fr+n-1
-    
-    return (fs=fs, from=fr, thru=th, boi=boi, gb=gb, mix=mix, flt=lpf)
 end
 
 suppress_mirror(rdl::RadioDownLink)=out_of_band_suppression(rdl::RadioDownLink)
