@@ -1,4 +1,4 @@
-function postprocess(iqs, oran, fs)
+function get_symbol(iqs, oran, fs)
     prbs= oran |> RadioDownLink
     r=fs ÷  sample_frequency(prbs)
 

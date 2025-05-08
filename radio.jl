@@ -1,8 +1,3 @@
-guardband(scs, bw; table=MIN_GUARDBAND_KHZ)=round(Int64, table[(scs=scs,bw=bw)]/7.5)
-subcarrier_spacing(μ::Int)=15<<μ
-hertz(n)=7500n
-subcarrier_spacing_configuration(scs::Int)=findfirst(e -> e==scs, [15,30,60])-1
-
 mutable struct RadioDownLink
     μ
     nbins
@@ -69,7 +64,9 @@ function radioDownLink(o::OranType3C; lowpassfilter=nothing, bw_table=BANDWIDTH_
     return μ, nbins, from, cp, symb, thru, boi, gb, fo, iqs, lpf, mix, fs
 end
 
+hertz(n)=7500n
 
+subcarrier_spacing_configuration(scs::Int)=findfirst(e -> e==scs, [15,30,60])-1
 subcarrier_spacing_configuration(rdl::RadioDownLink)=rdl.μ
 subcarrier_spacing_configuration!(rdl::RadioDownLink,μ)=(rdl.μ=μ)
 
@@ -102,6 +99,7 @@ band_of_interest!(rdl::RadioDownLink, boi)=(rdl.boi=boi)
 
 guardband(rdl::RadioDownLink)=rdl.gb
 guardband!(rdl::RadioDownLink, gb)=(rdl.gb=gb)
+guardband(scs, bw; table=MIN_GUARDBAND_KHZ)=round(Int64, table[(scs=scs,bw=bw)]/7.5)
 
 length_of_symbol(rdl::RadioDownLink)=rdl.symb
 length_of_symbol!(rdl::RadioDownLink, symb)=(rdl.symb=symb)
@@ -112,9 +110,7 @@ lowpassfilter!(rdl::RadioDownLink, flt)=(rdl.flt=flt)
 halfbandfilter = lowpassfilter
 halfbandfilter! = lowpassfilter!
 
-
-
-function iqmap(iqs)
+function bins_with_iq(iqs) 
     n= length(iqs)
     n2= n>>1
     m= nextpow(2,n)
@@ -122,7 +118,7 @@ function iqmap(iqs)
     return result
 end
 
-@test iqmap(1:10)==[12,13,14,15,16,1,2,3,4,5]
+@test bins_with_iq(1:10)==[12,13,14,15,16,1,2,3,4,5]
 
 function prbs2bins(rdl::RadioDownLink)
     μ= subcarrier_spacing_configuration(rdl)
@@ -131,7 +127,7 @@ function prbs2bins(rdl::RadioDownLink)
     
     iqs= inphase_n_quadratures(rdl)
     bins= zeros(eltype(iqs), nbins)
-    bins[iqmap(iqs)] .= iqs
+    bins[bins_with_iq(iqs)] .= iqs
     
     mix = fo + length(iqs) << μ
     
@@ -142,9 +138,9 @@ function prbs2bins(rdl::RadioDownLink)
 end
 
 function  oscillator(fs, mix, range)
-    ms= 0.001
-    number_of_samples_in_2ms= hertz(fs)*2ms
-    number_of_7500hz_periods_per_2ms= 15
+    ms = 0.001
+    number_of_samples_in_2ms = hertz(fs)*2ms
+    number_of_7500hz_periods_per_2ms = 15
 
     ω= number_of_7500hz_periods_per_2ms * mix
     result= exp.(1im*2π*(range)*ω/number_of_samples_in_2ms)
@@ -152,14 +148,15 @@ function  oscillator(fs, mix, range)
 end
 
 function phase_correction(rdl::RadioDownLink)
-    fs= sample_frequency(rdl)
-    mix= mixer_frequency(rdl)
-    fr= from(rdl)
-    cp= length_of_cyclic_prefix(rdl)
+    fs = sample_frequency(rdl)
+    mix = mixer_frequency(rdl)
+    fr = from(rdl)
+    cp = length_of_cyclic_prefix(rdl)
+    iqs= inphase_n_quadratures(rdl)
     
-    phase= first(oscillator(fs, mix, fr+cp:fr+cp))
+    phase = first(oscillator(fs, mix, fr+cp:fr+cp))
     
-    iqs= inphase_n_quadratures(rdl) ./ phase
+    iqs ./= phase
     inphase_n_quadratures!(rdl, iqs)
 
     return rdl
@@ -251,37 +248,21 @@ function out_of_band_suppression(rdl::RadioDownLink)
     lpf= lowpassfilter(rdl)
     delay= filter_delay(rdl)
 
-    fr=from(rdl)-delay
-    th=thru(rdl)-delay
+    fr=from(rdl)
+    th=thru(rdl)
+    fr -= delay
+    th -= delay
     from!(rdl,fr)
     thru!(rdl,th)
 
     iqs=inphase_n_quadratures(rdl)
 
-    y= filt(lpf, iqs)
+    filtered_iqs= filt(lpf, iqs)
     lowpassfilter!(rdl, lpf)
-    inphase_n_quadratures!(rdl, y)
+    inphase_n_quadratures!(rdl, filtered_iqs)
     
     return rdl
 end
-
-# function filter_w_meta(rdl::RadioDownLink)
-#     boi=band_of_interest(rdl)
-#     gb=guardband(rdl)
-#     fs=sample_frequency(rdl)
-#     mix=mixer_frequency(rdl)
-    
-#     lpf= lowpassfilter(rdl)
-#     delay=length(coef(lpf))>>1
-#     fr=from(rdl)-delay
-#     th=thru(rdl)-delay
-
-#     fr=thru(rdl)+1
-#     n=length(coef(lpf))-1
-#     th=fr+n-1
-    
-#     return (fs=fs, from=fr, thru=th, boi=boi, gb=gb, mix=mix, flt=lpf)
-# end
 
 function filter_w_meta!(rdl::RadioDownLink)
     result=RadioDownLink(rdl)
@@ -330,11 +311,8 @@ function mixer(rdl::RadioDownLink)
     
     iqs=inphase_n_quadratures(rdl)
     
-    phase=oscillator(fs,mix,fr:th)
-
-    println(size(iqs),"x",size(phase)," $fr:$th")
-    
-    iqs .*= phase
+    ϕ=oscillator(fs,mix,fr:th)
+    iqs .*= ϕ
     mix=0
 
     inphase_n_quadratures!(rdl,iqs)
@@ -372,41 +350,6 @@ function create_halfbandfilter(rdl::RadioDownLink)
     return rdl
 end
 
-
-
-# function create_halfbandfilter(rdl::RadioDownLink)
-#     fs= sample_frequency(rdl)
-#     boi= band_of_interest(rdl)
-    
-#     Ws=Wp=boi/fs
-#     hbf=find_halfband(Wp,Ws) |> FIRFilter 
-
-#     return hbf
-# end
-
-# function flush(flt)
-#     b= flt.flt
-#     boi=flt.boi
-#     fs=flt.fs
-#     mix=flt.mix
-#     fr=flt.from
-#     th=flt.thru
-    
-#     T=eltype(b.history)
-#     u=zeros(T,th-fr+1)
-#     y=filt(b,u)
-    
-#     out=RadioDownLink()
-#     sample_frequency!(out,fs)
-#     from!(out,fr)
-#     thru!(out,th)
-#     band_of_interest!(out,boi)
-#     mixer_frequency!(out,mix)
-#     inphase_n_quadratures!(out,y)
-    
-#     return out, nothing
-# end
-
 function flush(flt)
     n=2*filter_delay(flt)
     T=eltype(flt.flt.history)
@@ -423,15 +366,11 @@ function flush(flt)
     return result
 end
 
-function mix_n_boi(adata::RadioDownLink,bdata::RadioDownLink)
-    fs= sample_frequency(adata)
-    if fs!=sample_frequency(bdata)
-        error("problex with fs.")
-    end
-    mixa=mixer_frequency(adata)
-    mixb=mixer_frequency(bdata)
-    boia=band_of_interest(adata)
-    boib=band_of_interest(bdata)
+function mix_n_boi(a::RadioDownLink,b::RadioDownLink)
+    mixa=mixer_frequency(a)
+    mixb=mixer_frequency(b)
+    boia=band_of_interest(a)
+    boib=band_of_interest(b)
     
     boi_x2=2abs(mixb-mixa)+boia+boib
     boi_x2+=isodd(boi_x2)
@@ -443,115 +382,72 @@ function mix_n_boi(adata::RadioDownLink,bdata::RadioDownLink)
         mix_x2=2mixb+boib+2mixa-boia
     end
     mix=mix_x2>>1
-    return mix,boi        
+    return mix, boi        
 end
 
-function align_end(adata,bdata)
-    th= min(thru(adata),thru(bdata))
-    fs= sample_frequency(adata)
+function align_end(a,b)
+    th= min(thru(a),thru(b))
 
-    x=RadioDownLink()
-    
-    if thru(adata)>thru(bdata)
-        iqs=inphase_n_quadratures(adata)
-        fr=from(adata)
-        mix=mixer_frequency(adata)
-        boi=band_of_interest(adata)
-        
-        n=th-fr+1
-        sample_frequency!(x,fs)
-        from!(x,th+1)
-        band_of_interest!(x,boi)
-        mixer_frequency!(x,mix)
-        inphase_n_quadratures!(x,iqs[n+1:end])
-        thru!(x,thru(adata))
-
-        # x=(fs=fs, from=th+1, thru=thru(adata), boi=boi, mix=mix, iqs=iqs[n+1:end])
-        #adata=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=iqs[1:n])
-        thru!(adata,th)
-        inphase_n_quadratures!(adata,iqs[1:n])
-
-        
-    elseif thru(bdata)>thru(adata)
-        iqs=inphase_n_quadratures(bdata)
-        fr=from(bdata)
-        mix=mixer_frequency(bdata)
-        boi=band_of_interest(bdata)
-        
-        n=th-fr+1
-        sample_frequency!(x,fs)
-        from!(x,th+1)
-        band_of_interest!(x,boi)
-        mixer_frequency!(x,mix)
-        inphase_n_quadratures!(x,iqs[n+1:end])
-        thru!(x,thru(bdata))
-
-        # x=(fs=fs, from=th+1, thru=thru(bdata), boi=boi, mix=mix, iqs=iqs[n+1:end])
-#        bdata=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=iqs[1:n])
-        thru!(bdata,th)
-        inphase_n_quadratures!(bdata,iqs[1:n])
-    else
-        x=nothing
+    if thru(b)>thru(a)
+        a, b= b, a
     end
 
-    return adata, bdata, x
+    x=nothing
+    
+    if thru(a)>thru(b)
+        x=RadioDownLink(a)
+        iqs=inphase_n_quadratures(x)
+        fr=from(x)
+        n=th-fr+1
+
+        from!(x,th+1)
+        inphase_n_quadratures!(x,iqs[n+1:end])
+        thru!(a,th)
+        inphase_n_quadratures!(a,iqs[1:n])
+    end
+
+    return a, b, x
 end
 
-function align_start(adata,bdata)
-    fr= min(from(adata),from(bdata))
-    fs= sample_frequency(adata)
-    th= thru(adata)
+function align_start(a,b)
+    fr= min(from(a),from(b))
+    fs= sample_frequency(a)
+    th= thru(a)
 
-    if th != thru(bdata)
+    if th != thru(b)
         error("thru messed up")
     end
     
-    # boi=band_of_interest(adata)
-    # mix=mixer_frequency(adata)
+    for d in [a,b]
+        iqs=inphase_n_quadratures(d)
+        n=max(from(d)-fr,0)
+        zs=zeros(eltype(iqs),n)
+        iqs=vcat(zs,iqs)
+        inphase_n_quadratures!(d,iqs)
+        from!(d,fr)
+    end
     
-    iqs=inphase_n_quadratures(adata)
-    n=max(from(adata)-fr,0)
-    zs=zeros(eltype(iqs),n)
-    iqs=vcat(zs,iqs)
-    inphase_n_quadratures!(adata,iqs)
-    from!(adata,fr)
-    
-    # adata=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=iqs)
-
-    # boi=band_of_interest(bdata)
-    # mix=mixer_frequency(bdata)
-    
-    iqs=inphase_n_quadratures(bdata)
-    n=max(from(bdata)-fr,0)
-    zs=zeros(eltype(iqs),n)
-    iqs=vcat(zs,iqs)
-    inphase_n_quadratures!(bdata,iqs)
-    from!(bdata,fr)
-    
-    # bdata=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=iqs)
-    return adata, bdata
+    return a, b
 end
 
-function mix_n_merge(adata,bdata)
-    adata, bdata, x= align_end(adata, bdata)
-    adata, bdata= align_start(adata, bdata)
+function mix_n_merge(a,b)
+    a, b, x= align_end(a, b)
+    a, b= align_start(a, b)
     
-    fs=sample_frequency(adata)
-    fr= from(adata)
-    th= thru(adata)
-    mix,boi=mix_n_boi(adata,bdata)
+    fs=sample_frequency(a)
+    fr= from(a)
+    th= thru(a)
+    mix,boi=mix_n_boi(a,b)
     
-    iqs= inphase_n_quadratures(adata)
-    mixa= mixer_frequency(adata)
-    phase= oscillator(fs, mixa-mix, fr:th)
-    
-    mixed_n_merged = iqs .* phase
-    
-    iqs= inphase_n_quadratures(bdata)
-    mixb= mixer_frequency(bdata)
-    phase= oscillator(fs, mixb-mix, fr:th)
-    
-    mixed_n_merged .+= iqs .* phase
+    mixed_n_merged= similar(inphase_n_quadratures(a)) .=0
+ 
+    for d in [a,b]
+        iqs= inphase_n_quadratures(d)
+        mixb= mixer_frequency(d)
+        phase= oscillator(fs, mixb-mix, fr:th)
+        
+        mixed_n_merged .+= iqs .* phase
+    end
 
     result=RadioDownLink()
     sample_frequency!(result,fs)
@@ -560,8 +456,6 @@ function mix_n_merge(adata,bdata)
     band_of_interest!(result,boi)
     mixer_frequency!(result,mix)
     inphase_n_quadratures!(result,mixed_n_merged)
-
-    # result=(fs=fs, from=fr, thru=th, boi=boi, mix=mix, iqs=mixed_n_merged)
 
     return result, x
 end

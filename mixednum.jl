@@ -12,7 +12,7 @@ include("./filter_design.jl")
 include("./etsi.jl")
 include("./o-ran.jl")
 include("./radio.jl")
-include("./user_equipment.jl")
+include("./get_symbol.jl")
 
 scs=15
 extended=0
@@ -125,7 +125,7 @@ end
 
 fs_out=4096
  
-result, expected= postprocess(y, a1, fs_out)
+result, expected= get_symbol(y, a1, fs_out)
 @test all(isapprox.(result,expected, atol=0.03))
 
 
@@ -133,11 +133,10 @@ result, expected= postprocess(y, a1, fs_out)
 function can_merge(a,b)
     isnothing(a) && return false
     isnothing(b) && return false
-    ok=(sample_frequency(a)==4096)
-    ok &=!(from(a)>thru(b) || from(b)>thru(a))
-    ok &= mixer_frequency(a) in [-610,670]
-    ok &= mixer_frequency(b) in [-610,670]
-    return ok    
+    boi=last(mix_n_boi(a,b))
+    fs=sample_frequency(a)
+    result= boi/fs < 0.97
+    return result    
 end
 
 function find_data(datas,fs, t)
@@ -267,7 +266,7 @@ while !isempty(datas)
 end
 
 
-result, expected= postprocess(y, a2, fs_out)
+result, expected= get_symbol(y, a2, fs_out)
 @test all(isapprox.(result,expected, atol=0.03))
 
 figure()
