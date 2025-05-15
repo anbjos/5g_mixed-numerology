@@ -133,6 +133,8 @@ result, expected= get_symbol(y, a1, fs_out)
 function can_merge(a,b)
     isnothing(a) && return false
     isnothing(b) && return false
+    (from(a)>thru(b) || from(b)>thru(a)) && return false
+
     boi=last(mix_n_boi(a,b))
     fs=sample_frequency(a)
     result= boi/fs < 0.97
@@ -190,15 +192,14 @@ function find_flt!(flts, fs, t)
 end
 
 
-
-y=zeros(ComplexF64,4(2048+512))
-
-orans=[a1,a2,b1,b2]
-datas,flts=process_orans(orans)
-
 fs_in=512
 fs_in=2048
 fs_out=4096
+
+y=zeros(ComplexF64,hertz(fs_out) ÷ 500) # 2 ms
+
+orans=[a1,a2,b1,b2]
+datas,flts=process_orans(orans)
 
 fs=fs_in
 t0=0
