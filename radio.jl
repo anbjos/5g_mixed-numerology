@@ -27,6 +27,8 @@ function radioDownLink()
     return nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing
 end
 
+Base.show(io::IO,rdl::RadioDownLink)=print(io,"mix=$(mixer_frequency(rdl)) @ fs=$(sample_frequency(rdl)), $(from(rdl)):$(thru(rdl)) z:$(all(inphase_n_quadratures(rdl) .== 0))")
+
 function radioDownLink(o::OranType3C; lowpassfilter=nothing, bw_table=BANDWIDTH_TABLE, sg_table=SIGNAL_GENERATION_TABLE)
     μ= subcarrier_spacing_configuration(o)
     nbins= number_of_bins(o)
@@ -109,6 +111,13 @@ lowpassfilter!(rdl::RadioDownLink, flt)=(rdl.flt=flt)
 
 halfbandfilter = lowpassfilter
 halfbandfilter! = lowpassfilter!
+
+
+static_chain(rdl::RadioDownLink)= rdl |>    prbs2bins |> phase_correction |> create_lowpassfilter |> 
+                                            amplitude_correction  |> bins2symbol |> with_cyclic_prefix |> shift_half_subcarrier |> 
+                                            out_of_band_suppression
+
+
 
 function bins_with_iq(iqs) 
     n= length(iqs)
@@ -367,21 +376,15 @@ function flush(flt)
 end
 
 function mix_n_boi(a::RadioDownLink,b::RadioDownLink)
+    a,b= mixer_frequency(a)<mixer_frequency(b) ? (a,b) : (b,a)
+
     mixa=mixer_frequency(a)
     mixb=mixer_frequency(b)
     boia=band_of_interest(a)
     boib=band_of_interest(b)
-    
-    boi_x2=2abs(mixb-mixa)+boia+boib
-    boi_x2+=isodd(boi_x2)
-    boi=boi_x2 >> 1
-    
-    if mixa>mixb
-        mix_x2=2mixa+boia+2mixb-boib
-    else
-        mix_x2=2mixb+boib+2mixa-boia
-    end
-    mix=mix_x2>>1
+
+    mix= (mixa-boia>>1)>>1+(mixb+boib>>1)>>1
+    boi= 2max(mix-mixa+boia>>1,mixb+boib>>1-mix)
     return mix, boi        
 end
 
@@ -411,7 +414,6 @@ end
 
 function align_start(a,b)
     fr= min(from(a),from(b))
-    fs= sample_frequency(a)
     th= thru(a)
 
     if th != thru(b)
@@ -443,9 +445,9 @@ function mix_n_merge(a,b)
  
     for d in [a,b]
         iqs= inphase_n_quadratures(d)
-        mixb= mixer_frequency(d)
-        phase= oscillator(fs, mixb-mix, fr:th)
-        
+        old= mixer_frequency(d)
+        phase= oscillator(fs, old-mix, fr:th)
+
         mixed_n_merged .+= iqs .* phase
     end
 
@@ -471,4 +473,162 @@ function output_buffer!(y,data)
     inrange=findall(e -> e in 0:length(y)-1, indexes)
     y[indexes[inrange].+1]+=iqs[inrange]
     return y
+end
+
+freq_n_from(o::OranType3C)= o |> RadioDownLink |> prbs2bins |> r -> (frequency_offset(r), from(r))
+
+function process_orans(orans)
+    datas=[]
+    flts=[]
+    
+    for o in orans
+        fo,fr=freq_n_from(o)
+    
+        p=findfirst(e -> frequency_offset(e) == fo && from(e)==fr, flts)
+    
+        if isnothing(p)
+            data= RadioDownLink(o) |> static_chain
+        else
+            flt=lowpassfilter(flts[p])
+            deleteat!(flts,p)       
+            data=RadioDownLink(o; lowpassfilter=flt) |> static_chain
+        end
+    
+        flt=filter_w_meta!(data)
+        
+        push!(datas,data)
+        push!(flts,flt)
+    end
+    
+    while length(flts)>0
+        flt=flts[1]
+        deleteat!(flts,1) 
+        data=flush(flt)
+        push!(datas,data)
+    end
+
+    return datas,flts
+end
+
+function can_merge(a,b)
+    isnothing(a) && return false
+    isnothing(b) && return false
+    (from(a)>thru(b) || from(b)>thru(a)) && return false
+
+    boi=last(mix_n_boi(a,b))
+    fs=sample_frequency(a)
+    result= boi/fs < 0.97
+    return result    
+end
+
+function find_data(datas,fs, t)
+    isempty(datas) && return nothing
+    ok= sample_frequency.(datas) .== fs
+    ok .&= (from.(datas).<=t)
+    v= (ok.==0)*+Inf .+ mixer_frequency.(datas)
+    p= last(findmin(v))
+    isinf(v[p]) && return nothing
+    return p
+end
+
+function find_data!(datas,fs, t)
+    p=find_data(datas,fs,t)
+    if isnothing(p)
+        return nothing
+    else
+        result=datas[p]
+        deleteat!(datas,p)
+        return result
+   end
+end
+
+function find_next!(datas,fs, t, a)
+    isempty(datas) && return nothing
+    ok= sample_frequency.(datas) .== fs
+    ok .&= (from.(datas).<=t)
+    fr=from(a)
+    th=thru(a)
+    ok .&= (thru.(datas).<fr .|| from.(datas).>th) .==0
+    
+    v= (ok.==0)*+Inf .+ mixer_frequency.(datas)
+    p= last(findmin(v))
+    isinf(v[p]) && return nothing
+    result=datas[p]
+    deleteat!(datas,p)
+
+    return result
+end
+
+function find_flt!(flts, fs, t)
+    obsoletes = sample_frequency.(flts) .== fs .&& from.(flts) .< t
+    p= findfirst(obsoletes)
+    if isnothing(p)
+        return nothing
+    else
+        result=flts[p]
+        deleteat!(flts,p)
+        return result
+    end
+end
+
+sample_frequencies(fs_in,fs_out)=2 .^ (Int(log2(fs_in)):Int(log2(fs_out)))
+issomething(u) = ! isnothing(u)
+
+function process_data!(y,datas, flts, fs_in, fs_out)
+    fs=fs_in
+    t0=0
+    t=t0
+    while !isempty(datas)
+        println("t:$t")
+        for fs in sample_frequencies(fs_in,fs_out)
+            while (a=find_data!(datas,fs,t)) |> issomething
+            
+                b=find_next!(datas,fs,t,a)
+            
+                if can_merge(a,b)
+                    print("$a + $b -> ")
+                    a,b=mix_n_merge(a,b)
+                    push!(datas,a)
+                    push!(datas,b)
+                    println("$a + $b")
+                elseif fs < fs_out
+                    issomething(b) && push!(datas,b)
+                    print("$a -> ")
+                    data=upsample(a)
+                    p=findfirst(e -> mixer_frequency(e) == mixer_frequency(data) && from(e)==from(data), flts)
+                    
+                    if isnothing(p)
+                        data=create_halfbandfilter(data) |> suppress_mirror
+                    else
+                        flt=lowpassfilter(flts[p])
+                        deleteat!(flts,p)       
+                        halfbandfilter!(data,flt)
+                        data=suppress_mirror(data)
+                    end
+                    flt=filter_w_meta!(data)
+                    push!(flts,flt)
+                    push!(datas,data)
+                    println("$data")
+                elseif fs == fs_out
+                    issomething(b) && push!(datas,b)
+                    print("$a -> ")
+                    a=mixer(a) 
+                    output_buffer!(y, a)
+                    println("out($a)")
+                end
+            end
+            
+            while (flt=find_flt!(flts, fs, t)) |> issomething
+                data=flush(flt)
+                push!(datas,data)
+            end
+            
+            fs *= 2
+            t *= 2
+        end
+        
+        t0+=1024
+        t=t0
+        fs=fs_in
+    end
 end
