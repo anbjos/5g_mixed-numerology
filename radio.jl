@@ -27,7 +27,17 @@ function radioDownLink()
     return nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing
 end
 
-Base.show(io::IO,rdl::RadioDownLink)=print(io,"mix=$(mixer_frequency(rdl)) @ fs=$(sample_frequency(rdl)), $(from(rdl)):$(thru(rdl)) z:$(all(inphase_n_quadratures(rdl) .== 0))")
+Base.show(io::IO,rdl::RadioDownLink)=print(io,"mix=$(mixer_frequency(rdl)), boi=$(band_of_interest(rdl)) @ fs=$(sample_frequency(rdl)), $(from(rdl)):$(thru(rdl))")
+
+function with_this_sample_frequency(k,o)
+    μ= subcarrier_spacing_configuration(o)
+    symbol_length_at_30M72Hz=symbol_length(μ)
+    symbol_length_at_fs=number_of_bins(o)
+    ratio=symbol_length_at_fs/symbol_length_at_30M72Hz
+    nshifts=round(Int64,log2(ratio))
+    result=k << nshifts
+    return result
+end
 
 function radioDownLink(o::OranType3C; lowpassfilter=nothing, bw_table=BANDWIDTH_TABLE, sg_table=SIGNAL_GENERATION_TABLE)
     μ= subcarrier_spacing_configuration(o)
@@ -38,23 +48,21 @@ function radioDownLink(o::OranType3C; lowpassfilter=nothing, bw_table=BANDWIDTH_
 
     bw= bw_table[(scs=scs, nprbs=nprbs)]
     
-    gb= guardband(scs,bw)
-    boi= band_of_interest(o)
+    gb= in_units_of_7k5Hz( guardband_in_steps_of_1kHz(scs,bw) )
+    boi= band_of_interest_in_units_of_7k5Hz(o)
 
-    fo= frequency_offset(o) << subcarrier_spacing_configuration(o)
+    fo= frequency_offset_in_units_of_7k5Hz(o)
 
     subFrameIdMod2 = o.subFrameId % 2
     slotId= o.slotId
     symbolId= o.startSymbolId
     extended= isextended(o)
 
-    sgt= sg_table[(μ = μ, extended = extended, subFrameId = subFrameIdMod2, slotId = slotId, symbolId = symbolId)]
+    from, length_of_cyclic_prefix, length_of_symbol= sg_table[(μ = μ, extended = extended, subFrameId = subFrameIdMod2, slotId = slotId, symbolId = symbolId)]
 
-    fs_adjust= convert(Int64,log2(nbins/symbol_length(μ)))
-
-    from= sgt.from << fs_adjust
-    cp= sgt.cp  << fs_adjust
-    symb = sgt.symbol  << fs_adjust
+    from= with_this_sample_frequency(from, o)
+    cp= with_this_sample_frequency(length_of_cyclic_prefix ,o)
+    symb = with_this_sample_frequency(length_of_symbol ,o)
 
     iqs= copy(inphase_n_quadratures(o))
 
@@ -101,7 +109,6 @@ band_of_interest!(rdl::RadioDownLink, boi)=(rdl.boi=boi)
 
 guardband(rdl::RadioDownLink)=rdl.gb
 guardband!(rdl::RadioDownLink, gb)=(rdl.gb=gb)
-guardband(scs, bw; table=MIN_GUARDBAND_KHZ)=round(Int64, table[(scs=scs,bw=bw)]/7.5)
 
 length_of_symbol(rdl::RadioDownLink)=rdl.symb
 length_of_symbol!(rdl::RadioDownLink, symb)=(rdl.symb=symb)
@@ -132,7 +139,7 @@ end
 function prbs2bins(rdl::RadioDownLink)
     μ= subcarrier_spacing_configuration(rdl)
     nbins= number_of_bins(rdl)
-    fo = frequency_offset(rdl)
+    fo= frequency_offset(rdl)
     
     iqs= inphase_n_quadratures(rdl)
     bins= zeros(eltype(iqs), nbins)
@@ -173,7 +180,7 @@ end
 
 function create_lowpassfilter(rdl::RadioDownLink)
     lpf= lowpassfilter(rdl)
-    fs = sample_frequency(rdl)
+    fs= sample_frequency(rdl)
     boi= band_of_interest(rdl)
     gb= guardband(rdl)
 

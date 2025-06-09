@@ -37,7 +37,9 @@ function number_of_bins(o::OranType3C)
     return result
 end
 
-frequency_offset(o::OranType3C)=o.freqOffset
+frequency_offset_in_half_subcarriers(o::OranType3C)=o.freqOffset
+frequency_offset(o::OranType3C)=frequency_offset_in_half_subcarriers(o)
+frequency_offset_in_units_of_7k5Hz(o::OranType3C)=frequency_offset_in_half_subcarriers(o)  << subcarrier_spacing_configuration(o) 
 
 number_of_prbs(o::OranType3C)=o.numPrbs
 
@@ -53,11 +55,10 @@ sample_frequency(o::OranType3C)= (1000subcarrier_spacing(o) * number_of_bins(o))
 
 isextended(o::OranType3C)= (cp_length(o) in 512 .>> (0:4))
 
-# frequency_offset_7k5Hz(o::OranType3C)=frequency_offset(o) << subcarrier_spacing_configuration(o)
-
 inphase_n_quadratures(o::OranType3C)=o.iqs
 
-band_of_interest(o::OranType3C)=2number_of_subcarriers(o)<< subcarrier_spacing_configuration(o) 
+band_of_interest_in_half_subcarriers(o::OranType3C)=2number_of_subcarriers(o)
+band_of_interest_in_units_of_7k5Hz(o::OranType3C)=band_of_interest_in_half_subcarriers(o) << subcarrier_spacing_configuration(o) 
 
 bandwidth(o::OranType3C; table=BANDWIDTH_TABLE)=table[(scs=subcarrier_spacing(o),nprbs=number_of_prbs(o))]
 
@@ -78,7 +79,6 @@ function total_bandwidth(allocations, NRB=NRB,MIN_GUARDBAND_KHZ=MIN_GUARDBAND_KH
         scs=k.scs
         bw=k.bw
         μ=subcarrier_spacing_configuration(scs)
-        print(" $(12*NRB[(scs=scs, bw=bw)]<<(μ+1)) ")
         n7k5+=12*NRB[(scs=scs, bw=bw)]<<(μ+1)
         new_gb=round(Int64,2MIN_GUARDBAND_KHZ[(scs=scs, bw=bw)] ÷ 15)
         n7k5+=max(new_gb,old_gb)
@@ -96,10 +96,7 @@ function allocate_spectrum(bandwidths, fs_out, NRB=NRB, MIN_GUARDBAND_KHZ=MIN_GU
         error("illegal frequency allocation, bw: $tbw, fs: $fs_out")
     end
 
-
     freq_offset_7k5=-(tbw >> 1)
-
-    print(" $fs_out ")
 
     old_gb=0
     for (k, nummerology) in enumerate(bandwidths)

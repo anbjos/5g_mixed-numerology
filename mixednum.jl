@@ -20,7 +20,7 @@ fs_out=4096
 # fs_out=2048
 
 
-bandwidths=[[(scs=15, bw=10),(scs=30,bw=10),(scs=60,bw=10),],[(scs=60,bw=30),]]
+bandwidths=[[(scs=15, bw=10),(scs=30,bw=10),(scs=60,bw=10),],[(scs=30,bw=5),(scs=60,bw=10),]]
 # bandwidths=[[(scs=15, bw=25),],[(scs=15, bw=5),(scs=30,bw=5),(scs=60,bw=10),]]
 # bandwidths=[[(scs=15, bw=5),(scs=30, bw=10),],[(scs=30,bw=5),(scs=60,bw=10),]]
 # bandwidths=[[(scs=15, bw=5),(scs=30, bw=10),],[(scs=30,bw=5),(scs=60,bw=10),]]

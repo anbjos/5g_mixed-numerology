@@ -52,6 +52,8 @@ function bandwidth_table(nrb=NRB)
 end
 
 const BANDWIDTH_TABLE=bandwidth_table()
+guardband_in_steps_of_1kHz(scs, bw; table=MIN_GUARDBAND_KHZ)=round(Int64, table[(scs=scs,bw=bw)])
+in_units_of_7k5Hz(u)=round(Int64,u/7.5)
 
 # Functions to provide range in terms of κ, see ETSI TS 138 211, '5.3.1 OFDM baseband signal generation for all channels except PRACH'
 # Covers two subFrames
