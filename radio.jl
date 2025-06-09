@@ -257,7 +257,6 @@ end
 
 coef(f::FIRFilter)=f.h
 
-
 filter_delay(rdl::RadioDownLink)= rdl |> lowpassfilter |> coef |> length |> r -> r >> 1
 
 function out_of_band_suppression(rdl::RadioDownLink)
@@ -333,22 +332,6 @@ function mixer(rdl::RadioDownLink)
 
     inphase_n_quadratures!(rdl,iqs)
     mixer_frequency!(rdl,mix)
-
-    return rdl
-end
-
-function create_lowpassfilter(rdl::RadioDownLink)
-    lpf= lowpassfilter(rdl)
-    fs = sample_frequency(rdl)
-    boi= band_of_interest(rdl)
-    gb= guardband(rdl)
-
-    lpf= isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-26), Rp=db2amp(1.0)-1) |> FIRFilter : lpf
-
-    lowpassfilter!(rdl, lpf)
-    boi= boi + 2gb
-    boi=band_of_interest!(rdl, boi)
-    guardband!(rdl,nothing)
 
     return rdl
 end
@@ -583,8 +566,8 @@ issomething(u) = ! isnothing(u)
 
 function process_data!(y,datas, flts, fs_in, fs_out)
     fs=fs_in
-    t0=0
-    t=t0
+    fs_in_time=0
+    t=fs_in_time
     while !isempty(datas)
         println("t:$t")
         for fs in sample_frequencies(fs_in,fs_out)
@@ -634,8 +617,8 @@ function process_data!(y,datas, flts, fs_in, fs_out)
             t *= 2
         end
         
-        t0+=1024
-        t=t0
+        fs_in_time+=512
+        t=fs_in_time
         fs=fs_in
     end
 end
