@@ -11,6 +11,7 @@ mutable struct OranType3C
     iqs
 end
 
+Base.show(io::IO,o::OranType3C)=print(io,"fr=$(o.frameId), sf=$(o.subFrameId),sl=$(o.slotId),sy=$(o.startSymbolId),fs=$(o.frameStructure),st=$(o.startPrbc),n=$(o.numPrbs),fo=$(o.freqOffset)")
 
 function iq_values(modulation, scs, bw, nrb=NRB)
     n=12nrb[( scs=scs, bw=bw )]
@@ -42,17 +43,14 @@ frequency_offset(o::OranType3C)=frequency_offset_in_half_subcarriers(o)
 frequency_offset_in_units_of_7k5Hz(o::OranType3C)=frequency_offset_in_half_subcarriers(o)  << subcarrier_spacing_configuration(o) 
 
 number_of_prbs(o::OranType3C)=o.numPrbs
-
 number_of_subcarriers(o::OranType3C)=12number_of_prbs(o)
 
 subcarrier_spacing(o::OranType3C)=15 << subcarrier_spacing_configuration(o)
-
 subcarrier_spacing_configuration(o::OranType3C)= o.frameStructure.μ
 
 cp_length(o)=o.cpLength
 
 sample_frequency(o::OranType3C)= (1000subcarrier_spacing(o) * number_of_bins(o)) ÷ 7500
-
 isextended(o::OranType3C)= (cp_length(o) in 512 .>> (0:4))
 
 inphase_n_quadratures(o::OranType3C)=o.iqs
@@ -60,9 +58,8 @@ inphase_n_quadratures(o::OranType3C)=o.iqs
 band_of_interest_in_half_subcarriers(o::OranType3C)=2number_of_subcarriers(o)
 band_of_interest_in_units_of_7k5Hz(o::OranType3C)=band_of_interest_in_half_subcarriers(o) << subcarrier_spacing_configuration(o) 
 
-bandwidth(o::OranType3C; table=BANDWIDTH_TABLE)=table[(scs=subcarrier_spacing(o),nprbs=number_of_prbs(o))]
-
-guardband(o::OranType3C)=guardband(subcarrier_spacing(o),bandwidth(o))
+bandwidth(o::OranType3C; table=BANDWIDTH_TABLE)=table[(scs=subcarrier_spacing(o), nprbs=number_of_prbs(o))]
+guardband(o::OranType3C)=guardband(subcarrier_spacing(o), bandwidth(o))
 
 function align_with_nummerology(μ, n)
     p=n
