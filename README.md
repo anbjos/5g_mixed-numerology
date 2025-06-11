@@ -6,68 +6,79 @@ To achieve this, 5G introduces the concept of **multiple numerologies**—sets o
 
 ### Inter-Numerology Interference (INI)
 
-Each numerology defines its own OFDM symbol duration. Since OFDM relies on the assumption that each subcarrier is a periodic signal over the symbol time, this becomes problematic when one numerology observes or processes another using its own (mismatched) symbol length. The signal is no longer sampled over an integer number of periods, which leads to **discontinuities** in the time domain and **spectral leakage** in the frequency domain.
+Each numerology in 5G defines its own subcarrier spacing and OFDM symbol duration. Since OFDM relies on the assumption that each subcarrier is periodic over the symbol duration, this assumption breaks down when one numerology is observed or processed using the timing parameters of another. The result is that subcarriers are no longer sampled over integer multiples of their period, leading to **discontinuities** in the time domain and **spectral leakage** in the frequency domain.
 
-This violation of periodicity breaks the orthogonality between subcarriers and causes **Inter-Numerology Interference**—even if numerologies are strictly separated in time or frequency. INI is thus not just a result of overlap, but a structural issue caused by differing symbol lengths and timing assumptions across numerologies.
+This leakage violates subcarrier orthogonality and causes **Inter-Numerology Interference (INI)**. Notably, INI can occur even when numerologies are separated in time or frequency, because the interference stems from **mismatched symbol structures**, not just physical overlap.
 
-Addressing INI requires more than just guard bands or simple filtering. It demands careful scheduling, timing-aware resource allocation, and potentially architectural separation of numerology domains. This repository explores one such scheduling concept at a high level of abstraction. The model is designed to demonstrate feasibility, with an emphasis on **modularity and flexibility**—making it a useful tool for **architectural exploration** and **system-level optimization**, rather than low-level implementation.
+To address this, the model presented in this repository applies a structured filtering and mixing approach:
+
+* Each symbol stream is **low-pass filtered at the base rate corresponding to its numerology**, ensuring that its spectral content remains confined to its designated band.
+* The filtered signals are then **interpolated and mixed** into a shared frequency-domain representation, preserving both time and frequency isolation between numerologies.
+
+This approach contains spectral leakage and enables clean, modular symbol processing, while maintaining flexibility in resource scheduling.
+
+Although not implemented in this model, **windowing techniques**—which taper symbol edges to reduce sidelobes—are another known strategy for mitigating INI. These can complement filtering approaches and, in more advanced systems, may be used in combination to further suppress interference.
+
+The focus of this model is on **feasibility and modular design**, supporting architectural exploration of numerology coexistence with an emphasis on clarity, flexibility, and system-level insight.
 
 ### Concept of the Solution
 
-The proposed solution addresses Inter-Numerology Interference (INI) through a modular signal processing pipeline that treats each numerology independently, while enabling efficient and interference-aware mixing when appropriate. The core ideas are:
+The proposed solution addresses Inter-Numerology Interference (INI) through a modular signal processing pipeline that processes each numerology independently and prepares them for shared representation through controlled, staged mixing and interpolation. INI is **eliminated up front** via filtering, and the subsequent steps dynamically manage how signals are brought together. The core ideas are:
 
-1. **Band Limitation via Filtering**  
-   Each numerology is constrained to a well-defined frequency band using a low-pass filter. This filter suppresses out-of-band energy caused by discontinuities between symbols, minimizing spectral leakage and reducing INI.
+1. **Per-Numerology Filtering and Interpolation**
+   Each numerology is processed independently at its **native (low) sample rate**, which corresponds to its specific subcarrier spacing and symbol duration. A dedicated **low-pass filter** is applied to constrain the signal to a defined spectral band, suppressing out-of-band energy caused by symbol transitions and effectively mitigating INI at the source.
+   After filtering, each signal is **interpolated to a higher sample rate**, enabling it to be progressively brought into alignment with other numerologies. Although the sample rate increases, the signal’s bandwidth remains narrow and well-contained, setting the stage for selective and interference-free mixing.
 
-2. **Per-Numerology Filtering at Low Sample Rates**  
-   To reduce computational overhead, filtering is applied individually to each numerology at its **native (low) sample rate**—i.e., the rate matched to its symbol duration and subcarrier spacing. This enables efficient isolation and pre-processing without unnecessary upsampling.
+2. **Dynamic, Stage-Wise Mixing**
+   As numerologies reach common sample rates, **dynamic decisions** are made about whether they can be mixed based on spectral adjacency and compatibility. If signals do not overlap and fit within the available bandwidth, they are **combined into a single stream** at that stage. Otherwise, they are passed to the next interpolation level. This **stage-wise consolidation** continues until all remaining numerologies reach the final baseband sample rate.
 
-3. **Interpolation for Mixing and Resource Sharing**  
-   After filtering, each numerology is **interpolated to a common higher sample rate**. Although the sampling resolution increases, each signal’s bandwidth remains narrow. This creates an opportunity to **combine multiple numerologies** at the same sample rate, provided their total bandwidth fits within the available spectrum and they are **spectrally adjacent**.
-
-4. **Local Mixing Decisions Based on Sample Rate Compatibility**  
-   The decision to mix numerologies is made **locally** at each stage, using only data from numerologies that already share the same sample rate. If mixing isn't feasible at a given stage (due to overlap or bandwidth constraints), numerologies are **interpolated to the next higher sample rate**, and the mixing decision is reevaluated.
-
-5. **Final Baseband Stage at Output Sample Rate**  
-   At the highest sample rate—used for baseband processing—all remaining numerologies are **fully mixed into a single composite signal**. This is possible because, by this point, all signals have been filtered, resampled, and allocated in frequency such that **no spectral overlap occurs**, assuming that frequency planning by the network has been done correctly. This final stage prepares the unified baseband signal for transmission or further downstream processing.
+3. **Final Baseband Stage at Output Sample Rate**
+   At the highest output rate—typically used for baseband processing—all remaining numerologies are **fully mixed into a single composite signal**. Because earlier filtering and careful frequency planning have ensured non-overlapping bands, this final combination is deterministic and clean, preparing the unified signal for transmission or downstream processing.
    
 ### Static Processing Chain
 
 Symbols are processed individually, following the structure defined in the [ETSI 5G NR specification (TS 138 211)](https://www.etsi.org/deliver/etsi_ts/138200_138299/138211/15.03.00_60/ts_138211v150300p.pdf). Each symbol is fully described by:
 
 - **Timing parameters**: `frame`, `subframe`, `slot`, and `symbol index`
-- **Frequency resources**: frequency offset and Physical Resource Block (PRB) allocation  
+- **Frequency resources**: `freqOffset`, `numPrbs` (-and `startPrbc`) allocation  
 - **Numerology**: subcarrier spacing and cyclic prefix, as determined by the frame structure
-
+    
 This standardized format ensures precise time-frequency mapping, enabling consistent and modular processing across mixed numerologies.
 
 The following sections defines the processing that all symbols go through before interpolation and mixing. I have termed this part of the processing static since it is dependent on thy symbol only.
 
-#### Metadata Representation
+### ✅ **Updated Metadata Representation**
 
 The metadata used during processing differs slightly from the raw O-RAN representation:
 
-| Field              | Description                                                                 |
-|--------------------|-----------------------------------------------------------------------------|
-| $\mu$              | ETSI subcarrier spacing configuration                                       |
-| Number of bins     | Number of FFT bins (next power of two greater than the number of subcarriers) |
-| Sample rate        | Base sample rate of the symbol (in units of 7500 Hz) before interpolation   |
-| From               | Starting sample of the symbol, relative to the start of an even subframe    |
-| Thru               | Last sample of the symbol                                                   |
-| Cyclic prefix      | Length of the cyclic prefix (in samples)                                    |
-| Band of interest   | Bandwidth of interest (in units of 7500 Hz)                                 |
-| Guard band (gb)    | Guard band width (in units of 7500 Hz)                                      |
-| Frequency offset   | Offset to the lowest subcarrier frequency (in units of 7500 Hz)             |
-| Lowpass filter     | Lowpass filter applied to suppress out-of-band emissions                    |
-| Mixer frequency    | Frequency shift applied to the symbol                                       |
+| Field            | Description                                                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| \$\mu\$          | ETSI subcarrier spacing configuration (numerology index)                                                                            |
+| Number of bins   | Number of FFT bins (next power of two greater than the number of subcarriers)                                                       |
+| Sample rate      | Base sample rate of the symbol (in units of 7500 Hz) before interpolation                                                           |
+| From             | Starting sample of the symbol, relative to the start of an even subframe                                                            |
+| Thru             | Last sample of the symbol                                                                                                           |
+| Cyclic prefix    | Length of the cyclic prefix (in samples)                                                                                            |
+| Band of interest | Bandwidth of interest (in units of 7500 Hz)                                                                                         |
+| Guard band (gb)  | Guard band width (in units of 7500 Hz)                                                                                              |
+| Frequency offset | Offset to the lowest subcarrier frequency (in units of 7500 Hz); used only to compute the mixer frequency, and discarded thereafter |
+| Mixer frequency  | Absolute frequency (in Hz) corresponding to the DC bin in the FFT-centric representation                                            |
+| Lowpass filter   | Lowpass filter applied to suppress out-of-band emissions                                                                            |
 
-In this processing step, the **frequency offset** from the O-RAN header, originally specified in half-subcarrier units, is translated into units of 7500 Hz.
+---
 
-The **band of interest** and **guard band** are inferred from the subcarrier spacing configuration and the number of [Physical Resource Blocks (PRBs)](https://www.etsi.org/deliver/etsi_ts/138200_138299/138211/15.03.00_60/ts_138211v150300p.pdf), as defined in Sections 5.3.2 and 5.3.3 of [ETSI TS 138 104](https://www.etsi.org/deliver/etsi_ts/138100_138199/13810104/18.06.00_60/ts_13810104v180600p.pdf).
+### 🔍 Processing Notes
 
-The **timestamp (`from`)**, **cyclic prefix**, and **symbol length** are derived according to Section 5.3.1, *OFDM Baseband Signal Generation for All Channels Except PRACH*, in [ETSI TS 138 211](https://www.etsi.org/deliver/etsi_ts/138200_138299/138211/15.03.00_60/ts_138211v150300p.pdf).
+* The **frequency offset**, originally specified in half-subcarrier units in the O-RAN header, is **converted to units of 7500 Hz** and used to compute the **mixer frequency**.
+* After the **mixer frequency** is derived, the **frequency offset is no longer used** in subsequent processing steps.
+* The **mixer frequency** defines the **absolute spectral location** of the signal’s DC bin in the FFT-centric view. This enables accurate interpretation of the spectrum relative to carrier frequencies.
+* The **band of interest** and **guard band** are inferred from the subcarrier spacing (\$\mu\$) and the number of [Physical Resource Blocks (PRBs)](https://www.etsi.org/deliver/etsi_ts/138200_138299/138211/15.03.00_60/ts_138211v150300p.pdf), as per ETSI TS 138 104 Sections 5.3.2 and 5.3.3.
+* The **From**, **Thru**, and **cyclic prefix** are derived according to Section 5.3.1 of [ETSI TS 138 211](https://www.etsi.org/deliver/etsi_ts/138200_138299/138211/15.03.00_60/ts_138211v150300p.pdf).
+* The **frequency-domain representation** is **FFT-centric**, where:
 
-The **number of FFT bins** is computed as the next power of two greater than the number of subcarriers, where the number of subcarriers is defined as `12 × number of PRBs`.
+  * **Bin 0 represents DC**
+  * Positive frequencies follow, and negative frequencies wrap around the end
+  * This differs from 5G NR’s native subcarrier layout where bin 0 corresponds to the lowest subcarrier
 
 #### PRBs to Bins
 
@@ -77,7 +88,7 @@ Resource elements are centered around the DC (zero frequency) subcarrier:
 - The first half of the subcarriers are mapped to negative frequency bins, just below DC.  
 - The second half are mapped to positive frequency bins, starting at DC and extending upward.
 
-Additionally, the **frequency offset** is translated into a **mixing frequency**, which is applied to the bins to correctly position the signal within the target frequency range.
+Additionally, the **frequency offset** is translated into a **mixing frequency**, which later in the processing is applied to the bins to correctly position the signal within the target frequency range.
 
 ```julia
 function prbs2bins(rdl::RadioDownLink)
@@ -157,14 +168,14 @@ These lowpass filters are **stateful** and shared across **all symbols within th
 
 When the first symbol of a given antenna carrier (i.e., mixing frequency) is processed, the **band of interest** and **guard band** values from the metadata are used to design the filter.
 
-The filter is constructed using an **iterative application of the Remez algorithm**, where the filter order and the balance between stopband suppression and passband ripple are adjusted until the filter meets the required specifications. This method produces **linear-phase filters**, which are ideal for preserving the waveform shape by ensuring that all frequency components experience the same phase delay—critical for accurate time-domain signal reconstruction.
+The filter is constructed using an **iterative application of the Remez algorithm**, where the filter order and the balance between stopband suppression and passband ripple are adjusted until the filter meets the required specifications. This method produces [linear-phase filters](https://en.wikipedia.org/wiki/Linear_phase), which are ideal for preserving the waveform shape by ensuring that all frequency components experience the same phase delay—critical for accurate time-domain signal reconstruction.
 
 The model maintains a **table of all active filters**. When a symbol is processed:
 - It first checks if a filter already exists for that antenna carrier.
   - If so, the existing filter is reused.
   - If not, a new filter is designed and added to the table.
 
-This filter table is also monitored for **unused filters**. If a filter is no longer associated with any active symbol streams, it is **flushed**. Before removal, any remaining data processed with that filter is finalized and output together with any buffered results.
+This filter table is also monitored for **unused filters**. When a filter is no longer associated with any active symbol streams, it is considered unused and is **flushed**. Flushing a filter means capturing the remaining response stored in its internal state. This residual data is then processed like any other symbol data, ensuring the filter's output is finalized before the filter is discarded.
 
 To support this, the filter table also stores relevant **metadata** (such as mixing frequency and other parameters) to ensure consistent and correct processing of each symbol.
 
@@ -175,7 +186,7 @@ function create_lowpassfilter(rdl::RadioDownLink)
     boi= band_of_interest(rdl)
     gb= guardband(rdl)
 
-    lpf= isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-26), Rp=db2amp(1.0)-1) |> FIRFilter : lpf.flt
+    lpf= isnothing(lpf) ? remezfind(boi/fs, boi/fs+gb/fs; Rs=db2amp(-26), Rp=db2amp(1.0)-1) |> FIRFilter : lpf
 
     lowpassfilter!(rdl, lpf)
     boi= boi + 2gb
@@ -228,8 +239,6 @@ end
 ```
 
 This function operates on a `RadioDownLink` structure, transforming its contents from the frequency domain (bins) to a time-domain OFDM symbol.
-
-Sure! Here's the improved version with the **motivation and reference fully integrated into the text body**, flowing naturally:
 
 #### With Cyclic Prefix
 
@@ -323,4 +332,24 @@ end
 ```
 
 Since the filter is **linear phase**, it introduces a **constant group delay** that is easily accounted for by adjusting the symbol timing. In addition to filtering the IQ samples, the function also updates the **filter state**, as the filter is **stateful** and shared across symbols in the same antenna carrier.
+
+### Dynamic Processing
+
+The **static processing** stage converts incoming O-RAN messages into internal data packages, each representing a symbol (or a portion thereof) along with associated metadata. These packages are then passed to the **dynamic processing** stage, where their interactions are managed based on timing and frequency constraints.
+
+In dynamic processing, one of three main actions can occur, depending on how packages overlap in time and frequency:
+
+#### Mix and Merge
+
+When **two data packages overlap in time**, they may be **merged into a single composite package**, provided the **sampling rate is high enough** to accommodate both signals **without aliasing** and with **sufficient guard band** between their respective frequency components.
+
+In such a case:
+
+* A new composite package is created.
+* The **combined band of interest** is centered around DC in the **shared frequency representation**.
+* The individual signals are placed at appropriate frequency offsets within the composite signal, maintaining their **relative frequency spacing**.
+
+A **new mixing frequency** is then computed for the merged package. This frequency ensures that when the composite signal is ultimately upconverted or processed, each original signal ends up correctly positioned in the spectrum.
+
+This stage enables **progressive aggregation** of symbols from different numerologies, maintaining modularity and minimizing inter-numerology interference (INI).
 
