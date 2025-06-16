@@ -263,8 +263,8 @@ function out_of_band_suppression(rdl::RadioDownLink)
     lpf= lowpassfilter(rdl)
     delay= filter_delay(rdl)
 
-    fr=from(rdl)
-    th=thru(rdl)
+    fr= from(rdl)
+    th= thru(rdl)
     fr -= delay
     th -= delay
     from!(rdl,fr)
@@ -294,7 +294,7 @@ function filter_w_meta!(rdl::RadioDownLink)
 end
 
 function upsample(rdl::RadioDownLink)
-    fs=sample_frequency(rdl)
+    fs= sample_frequency(rdl)
     fr= from(rdl)
     th= thru(rdl)
     iqs= inphase_n_quadratures(rdl)
@@ -590,7 +590,7 @@ function process_data!(y,datas, flts, fs_in, fs_out)
                     if isnothing(p)
                         data=create_halfbandfilter(data) |> suppress_mirror
                     else
-                        flt=lowpassfilter(flts[p])
+                        flt=halfbandfilter(flts[p])
                         deleteat!(flts,p)       
                         halfbandfilter!(data,flt)
                         data=suppress_mirror(data)
