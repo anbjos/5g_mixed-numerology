@@ -712,7 +712,7 @@ The IQ values of a symbol are extracted from the aggregated time-domain signal b
 5. **Inter-Symbol Interference Reduction**
    To minimize ISI, the symbol is extracted from the **middle of the CP-plus-symbol interval**. The phase is adjusted to effectively **delay the signal by half a cyclic prefix**, centering the sampling window.
 
-Let me know if you'd like a diagram to illustrate this process—it would complement the explanation well.
+
 
 
 
