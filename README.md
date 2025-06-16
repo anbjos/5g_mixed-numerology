@@ -21,7 +21,7 @@ Although not implemented in this model, **windowing techniques**—which taper s
 
 The focus of this model is on **feasibility and modular design**, supporting architectural exploration of numerology coexistence with an emphasis on clarity, flexibility, and system-level insight.
 
-### 💡 Concept of the Solution
+### Concept of the Solution
 
 This solution addresses **Inter-Numerology Interference (INI)** through a modular and scalable signal processing pipeline. Each numerology is handled independently in early stages, then progressively integrated in later stages through controlled interpolation and frequency-domain mixing. The key advantage of this design is that **INI is mitigated early**—before numerologies are combined—allowing for clean coexistence and efficient processing.
 
@@ -504,4 +504,198 @@ end
 ```
 
 This function manages both data processing and filter flushing in a unified time-stepped loop. It closely follows the conceptual logic described above, ensuring correctness and flexibility when handling mixed numerologies across dynamic time and frequency conditions.
+
+Here is a cleaned-up and clearer version of your **Results** section, improving flow, formatting, grammar, and readability while preserving all technical details:
+
+---
+
+### 📊 Results
+
+This section presents a range of results generated during simulation, including processing logs, figures, and other diagnostic outputs. These results help illustrate the behavior of the system and verify that mixed numerologies are handled correctly through staged filtering, interpolation, and merging.
+
+#### Processing log
+
+The main **dynamic processing loop** generates a log that reflects the operations performed on each data package. This log provides insight into how packages are interpolated, merged, and ultimately written to the output buffer.
+
+The format of each log entry corresponds to the fields defined in the **Metadata Representation** section. For convenience, a quick reference is provided below:
+
+| Field       | Description                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| `mix`       | Mixing frequency applied to the data package (in units of 7500 Hz)                         |
+| `boi`       | Band of interest — the bandwidth occupied by the signal (in units of 7500 Hz)              |
+| `fs`        | Sample rate of the package (in units of 7500 Hz)                                           |
+| `From:thru` | Time range (in samples) relative to the start of an even subframe at the given sample rate |
+| `+`         | Indicates that two packages were **mixed and merged** into a new composite package         |
+| `->`        | Indicates a **processing operation** (e.g., upsampling, output, or filtering)              |
+
+> ℹ️ **Note:** You may observe **negative timestamps** in the output. These result from **filter delay compensation** during the processing stages.
+
+#### Example Log Breakdown
+
+* **Lines 1–4** show examples of **interpolation** (upsampling to a higher sample rate).
+* **Line 5** shows an example of **mix and merge**.
+* Later lines demonstrate repeated merging and final output.
+
+```text
+t:0
+mix=-1236, boi=1332 @ fs=2048, -48:1055 -> mix=-1236, boi=1332 @ fs=4096, -111:2096
+mix=52, boi=1330 @ fs=2048, -23:532 -> mix=52, boi=1330 @ fs=4096, -61:1050
+mix=1288, boi=1326 @ fs=2048, -16:265 -> mix=1288, boi=1326 @ fs=4096, -47:516
+mix=-1236, boi=1332 @ fs=4096, -111:2096 + mix=52, boi=1330 @ fs=4096, -61:1050 -> mix=-593, boi=2620 @ fs=4096, -111:1050 + mix=-1236, boi=1332 @ fs=4096, 1051:2096
+mix=-593, boi=2620 @ fs=4096, -111:1050 + mix=1288, boi=1326 @ fs=4096, -47:516 -> mix=23, boi=3856 @ fs=4096, -111:516 + mix=-593, boi=2620 @ fs=4096, 517:1050
+mix=23, boi=3856 @ fs=4096, -111:516 -> out(mix=0, boi=3856 @ fs=4096, -111:516)
+
+t:512
+mix=-1236, boi=1332 @ fs=2048, 1056:2151 -> mix=-1236, boi=1332 @ fs=4096, 2097:4288
+mix=52, boi=1330 @ fs=2048, 1081:1628 -> mix=52, boi=1330 @ fs=4096, 2147:3242
+mix=52, boi=1330 @ fs=2048, 1629:2176 -> mix=52, boi=1330 @ fs=4096, 3243:4338
+mix=52, boi=1330 @ fs=2048, 533:1080 -> mix=52, boi=1330 @ fs=4096, 1051:2146
+mix=1288, boi=1326 @ fs=2048, 540:813 -> mix=1288, boi=1326 @ fs=4096, 1065:1612
+mix=1288, boi=1326 @ fs=2048, 1088:1361 -> mix=1288, boi=1326 @ fs=4096, 2161:2708
+mix=1288, boi=1326 @ fs=2048, 1636:1909 -> mix=1288, boi=1326 @ fs=4096, 3257:3804
+mix=1288, boi=1326 @ fs=2048, 1910:2183 -> mix=1288, boi=1326 @ fs=4096, 3805:4352
+mix=1288, boi=1326 @ fs=2048, 814:1087 -> mix=1288, boi=1326 @ fs=4096, 1613:2160
+mix=1288, boi=1326 @ fs=2048, 1362:1635 -> mix=1288, boi=1326 @ fs=4096, 2709:3256
+mix=1288, boi=1326 @ fs=2048, 266:539 -> mix=1288, boi=1326 @ fs=4096, 517:1064
+mix=-1236, boi=1332 @ fs=4096, 1051:2096 + mix=52, boi=1330 @ fs=4096, 1051:2146 -> mix=-593, boi=2620 @ fs=4096, 1051:2096 + mix=52, boi=1330 @ fs=4096, 2097:2146
+```
+
+This log provides a transparent view of how numerologies are handled, demonstrating the effectiveness of the staged processing, filtering, and merging strategy.
+
+Here is a revised and cleaned-up version of your **Results** section, improving grammar, clarity, and formatting consistency:
+
+### 📊 Results
+
+This section presents a variety of outputs generated during the simulation, including processing logs, numerical validations, spectrum analysis, and filter diagnostics. These results demonstrate the system’s ability to correctly handle mixed numerologies through staged filtering, interpolation, and dynamic scheduling.
+
+---
+
+#### 🪵 Processing Log
+
+The main **dynamic processing loop** produces a log that records each significant action taken on a data package—such as interpolation, merging, or output. These logs help trace how the scheduler dynamically manages overlapping symbols in time and frequency.
+
+Each log entry follows the metadata format described earlier. A quick reference is provided below:
+
+| Field       | Description                                                                               |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `mix`       | Mixing frequency (in units of 7500 Hz)                                                    |
+| `boi`       | Band of interest (in units of 7500 Hz)                                                    |
+| `fs`        | Sample rate (in units of 7500 Hz)                                                         |
+| `From:thru` | Time range in samples, relative to the start of an even subframe at the given sample rate |
+| `+`         | Indicates two packages were **mixed and merged**                                          |
+| `->`        | Indicates a **processing operation**, such as interpolation or output                     |
+
+> ℹ️ **Note:** Negative timestamps may appear due to delay compensation introduced by filtering stages.
+
+##### Example Log Breakdown
+
+* **Lines 1–4**: Interpolation (upsampling)
+* **Line 5 and onward**: Merging operations and final output writes
+
+```text
+t:0
+mix=-1236, boi=1332 @ fs=2048, -48:1055 -> mix=-1236, boi=1332 @ fs=4096, -111:2096
+mix=52, boi=1330 @ fs=2048, -23:532 -> mix=52, boi=1330 @ fs=4096, -61:1050
+mix=1288, boi=1326 @ fs=2048, -16:265 -> mix=1288, boi=1326 @ fs=4096, -47:516
+mix=-1236, boi=1332 @ fs=4096, -111:2096 + mix=52, boi=1330 @ fs=4096, -61:1050 -> mix=-593, boi=2620 @ fs=4096, -111:1050 + mix=-1236, boi=1332 @ fs=4096, 1051:2096
+mix=-593, boi=2620 @ fs=4096, -111:1050 + mix=1288, boi=1326 @ fs=4096, -47:516 -> mix=23, boi=3856 @ fs=4096, -111:516 + mix=-593, boi=2620 @ fs=4096, 517:1050
+mix=23, boi=3856 @ fs=4096, -111:516 -> out(mix=0, boi=3856 @ fs=4096, -111:516)
+
+t:512
+mix=-1236, boi=1332 @ fs=2048, 1056:2151 -> mix=-1236, boi=1332 @ fs=4096, 2097:4288
+mix=52, boi=1330 @ fs=2048, 1081:1628 -> mix=52, boi=1330 @ fs=4096, 2147:3242
+mix=52, boi=1330 @ fs=2048, 1629:2176 -> mix=52, boi=1330 @ fs=4096, 3243:4338
+mix=52, boi=1330 @ fs=2048, 533:1080 -> mix=52, boi=1330 @ fs=4096, 1051:2146
+mix=1288, boi=1326 @ fs=2048, 540:813 -> mix=1288, boi=1326 @ fs=4096, 1065:1612
+mix=1288, boi=1326 @ fs=2048, 1088:1361 -> mix=1288, boi=1326 @ fs=4096, 2161:2708
+mix=1288, boi=1326 @ fs=2048, 1636:1909 -> mix=1288, boi=1326 @ fs=4096, 3257:3804
+mix=1288, boi=1326 @ fs=2048, 1910:2183 -> mix=1288, boi=1326 @ fs=4096, 3805:4352
+mix=1288, boi=1326 @ fs=2048, 814:1087 -> mix=1288, boi=1326 @ fs=4096, 1613:2160
+mix=1288, boi=1326 @ fs=2048, 1362:1635 -> mix=1288, boi=1326 @ fs=4096, 2709:3256
+mix=1288, boi=1326 @ fs=2048, 266:539 -> mix=1288, boi=1326 @ fs=4096, 517:1064
+mix=-1236, boi=1332 @ fs=4096, 1051:2096 + mix=52, boi=1330 @ fs=4096, 1051:2146 -> mix=-593, boi=2620 @ fs=4096, 1051:2096 + mix=52, boi=1330 @ fs=4096, 2097:2146
+```
+
+---
+
+#### ✅ IQ Comparison Against Stimuli
+
+To ensure signal fidelity, IQ values from the final time-domain signal are compared against the expected symbol values. The comparison uses a simple threshold test:
+
+```julia
+result, expected = nothing, nothing
+for o in orans
+    result, expected = get_symbol(y, o, fs_out)
+    @test all(isapprox.(result, expected, atol=0.05))
+end
+```
+
+If any deviation exceeds the allowed tolerance (`atol = 0.05`), the test fails. This confirms that filtering, interpolation, and mixing preserve the signal with high accuracy.
+
+---
+
+#### 📉 Spectrum Analysis
+
+To verify spectral integrity, the **Welch method** is used to compute the power spectrum of the final baseband signal. The test uses three numerologies:
+
+```julia
+[(scs = 15, bw = 10), (scs = 30, bw = 10), (scs = 60, bw = 10)]
+```
+
+Data is collected over one **subframe (1 ms)**, and the **frequency resolution** is 7500 Hz. The resulting plot confirms clear band separation and suppression of inter-numerology interference:
+
+![power spectrum](figures/spectrum.png)
+
+> ⚠️ **Note:** Power scaling is based on ETSI-defined IQ amplitude and modulation. No normalization is performed—this would typically be handled by the Radio Unit (RU).
+
+---
+
+#### ✳️ Constellation Diagram
+
+The constellation diagram for the **15 kHz numerology** with **10 MHz bandwidth** shows well-clustered symbols, indicating clean demodulation:
+
+![constellation](figures/constalation.png)
+
+---
+
+#### 📐 Absolute Error vs. Subcarrier Index
+
+The plot below shows the **absolute error** (|stimulus − result|) across subcarriers. No significant edge effects or distortion are observed:
+
+![error](figures/error.png)
+
+---
+
+#### 🎯 Out-of-Band Filter Analysis
+
+A **zero-pole plot** of the out-of-band suppression filter is shown below:
+
+![out of band zero pole](figures/oob_zp.png)
+
+> The filter has a high order, which improves spectral suppression but introduces inter-symbol interference (ISI).
+
+The corresponding **magnitude response** is shown here:
+
+![out of band transfer function](figures/oob_tf.png)
+
+---
+
+#### 🌓 Halfband Filter Analysis
+
+A **zero-pole plot** of the halfband filter used for interpolation is shown below:
+
+![halfband zero pole](figures/hb_zp.png)
+
+> As with the OOB filter, the order is high to ensure steep roll-off.
+
+The corresponding **transfer function**:
+
+![hb transfer function](figures/hb_tf.png)
+
+
+
+
+
+
+
 
