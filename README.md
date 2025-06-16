@@ -693,7 +693,26 @@ The corresponding **transfer function**:
 ![hb transfer function](figures/hb_tf.png)
 
 
+### 📤 Extraction of a Symbol from the Aggregated Time-Domain Signal
 
+The IQ values of a symbol are extracted from the aggregated time-domain signal based on the original **O-RAN symbol definition**. The extraction process involves the following steps:
+
+1. **Frequency Alignment**
+   The symbol's frequency offset is used to define a mixing frequency that shifts **Resource Element 0 to DC**, aligning the subcarriers for analysis.
+
+2. **Phase Correction**
+   The signal phase is corrected so that there is **zero phase offset** at the first sample of the symbol **after the cyclic prefix (CP)**.
+
+3. **Inter-Numerology Interference Suppression**
+   To reduce interference from adjacent numerologies, the signal is **low-pass filtered in the frequency domain**, suppressing all components **outside the band of interest plus guard band** for the symbol.
+
+4. **Symbol Sampling**
+   After filtering, the symbol is sampled. The **symbol length** at the current sample rate determines the **subcarrier spacing** and defines the number of FFT bins.
+
+5. **Inter-Symbol Interference Reduction**
+   To minimize ISI, the symbol is extracted from the **middle of the CP-plus-symbol interval**. The phase is adjusted to effectively **delay the signal by half a cyclic prefix**, centering the sampling window.
+
+Let me know if you'd like a diagram to illustrate this process—it would complement the explanation well.
 
 
 
